@@ -5299,9 +5299,10 @@ bool C_BaseAnimating::DoesModelSupportGloves()
 #ifdef CSTRIKE_DLL
 	return (FindBodygroupByName( "gloves" ) > -1) ? true : false;
 #endif
-
+	
 	return false;
 }
+
 
 //-----------------------------------------------------------------------------
 // Purpose: 
