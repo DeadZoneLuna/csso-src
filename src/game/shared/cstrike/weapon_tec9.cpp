@@ -73,10 +73,13 @@ CWeaponTec9::CWeaponTec9()
 void CWeaponTec9::Spawn()
 {
 	BaseClass::Spawn();
+
+	m_flAccuracy = 0.92;
 }
 
 bool CWeaponTec9::Deploy()
 {
+	m_flAccuracy = 0.92;
 	return BaseClass::Deploy();
 }
 
@@ -85,6 +88,14 @@ void CWeaponTec9::PrimaryAttack()
 	CCSPlayer *pPlayer = GetPlayerOwner();
 	if ( !pPlayer )
 		return;
+
+	// Mark the time of this shot and determine the accuracy modifier based on the last shot fired...
+	m_flAccuracy -= (0.25)*(0.275 - (gpGlobals->curtime - m_flLastFire));
+
+	if (m_flAccuracy > 0.92)
+		m_flAccuracy = 0.92;
+	else if (m_flAccuracy < 0.725)
+		m_flAccuracy = 0.725;
 
 	m_flLastFire = gpGlobals->curtime;
 
@@ -113,14 +124,14 @@ void CWeaponTec9::PrimaryAttack()
 	FX_FireBullets(
 		pPlayer->entindex(),
 		pPlayer->Weapon_ShootPosition(),
-		pPlayer->GetFinalAimAngle(),
+		pPlayer->EyeAngles() + 2.0f * pPlayer->GetPunchAngle(),
 		GetWeaponID(),
 		Primary_Mode,
 		CBaseEntity::GetPredictionRandomSeed() & 255,
 		GetInaccuracy(),
 		GetSpread()); 
 
-	m_flNextPrimaryAttack = m_flNextSecondaryAttack = gpGlobals->curtime + GetCSWpnData().m_flCycleTime[m_weaponMode];
+	m_flNextPrimaryAttack = m_flNextSecondaryAttack = gpGlobals->curtime + GetCSWpnData().m_flCycleTime;
 
 	if (!m_iClip1 && pPlayer->GetAmmoCount( GetPrimaryAmmoType() ) <= 0)
 	{
@@ -130,10 +141,12 @@ void CWeaponTec9::PrimaryAttack()
 
 	SetWeaponIdleTime( gpGlobals->curtime + 2 );
 
-	// table driven recoil
-	Recoil( m_weaponMode );
+	// update accuracy
+	m_fAccuracyPenalty += GetCSWpnData().m_fInaccuracyImpulseFire[Primary_Mode];
 
-	m_flRecoilIndex += 1.0f;
+	QAngle angle = pPlayer->GetPunchAngle();
+	angle.x -= 2;
+	pPlayer->SetPunchAngle( angle );
 }
 
 
@@ -144,7 +157,11 @@ void CWeaponTec9::SecondaryAttack()
 
 bool CWeaponTec9::Reload()
 {
-	return DefaultPistolReload();
+	if ( !DefaultPistolReload() )
+		return false;
+
+	m_flAccuracy = 0.92;
+	return true;
 }
 
 void CWeaponTec9::WeaponIdle()

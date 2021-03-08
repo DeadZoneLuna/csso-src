@@ -30,7 +30,6 @@ extern const char * GetWeaponAliasFromTranslated(const char *translatedAlias);
 extern bool	IsPrimaryWeapon( CSWeaponID id );
 extern bool IsSecondaryWeapon( CSWeaponID  id );
 extern int GetShellForAmmoType( const char *ammoname );
-extern bool IsGunWeapon( CSWeaponType weaponType );
 
 #define SHIELD_VIEW_MODEL "models/weapons/v_shield.mdl"
 #define SHIELD_WORLD_MODEL "models/weapons/w_shield.mdl"
@@ -189,7 +188,7 @@ public:
 
 #ifdef CLIENT_DLL
 	virtual int GetMuzzleAttachmentIndex( C_BaseAnimating* pAnimating, bool isThirdPerson = false );
-	virtual const char* GetMuzzleFlashEffectName( bool bThirdPerson );
+	const char* GetMuzzleFlashEffectName( bool bThirdPerson );
 	virtual int GetEjectBrassAttachmentIndex( C_BaseAnimating* pAnimating, bool isThirdPerson = false );
 #endif
 
@@ -268,6 +267,7 @@ public:
 
 
 	bool	m_bDelayFire;			// This variable is used to delay the time between subsequent button pressing.
+	float	m_flAccuracy;
 
 	// [pfreese] new accuracy model
 	CNetworkVar( CSWeaponMode, m_weaponMode);
@@ -278,7 +278,6 @@ public:
 	virtual void UpdateAccuracyPenalty();
 
 	CNetworkVar( float, m_fAccuracyPenalty );
-	CNetworkVar( float, m_flRecoilIndex );
 
 	CNetworkVar( float, m_flPostponeFireReadyTime );
 	void ResetPostponeFireReadyTime( void ) { m_flPostponeFireReadyTime = FLT_MAX; }
@@ -311,7 +310,6 @@ public:
 protected:
 
 	float	CalculateNextAttackTime( float flCycleTime );
-	void Recoil( CSWeaponMode weaponMode );
 
 private:
 
@@ -356,9 +354,5 @@ public:
 };
 
 extern ConVar weapon_accuracy_model;
-extern ConVar weapon_recoil_decay2_exp;
-extern ConVar weapon_recoil_decay2_lin;
-extern ConVar weapon_recoil_vel_decay;
-extern ConVar weapon_recoil_scale;
 
 #endif // WEAPON_CSBASE_H

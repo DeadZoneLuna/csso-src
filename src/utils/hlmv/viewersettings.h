@@ -139,8 +139,6 @@ struct ViewerSettings
 
 	char mergeModelFile[HLMV_MAX_MERGED_MODELS][256];
 
-	bool secondaryLights;
-
 	ViewerSettings();
 
 };

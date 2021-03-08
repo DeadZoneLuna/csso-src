@@ -62,7 +62,7 @@ public:
 	virtual void SetRoomType( IRecipientFilter& filter, int roomType );
 	virtual void SetPlayerDSP( IRecipientFilter& filter, int dspType, bool fastReset );
 
-	virtual int EmitAmbientSound( const char *pSample, float flVolume, 
+	virtual void EmitAmbientSound( const char *pSample, float flVolume, 
 		int iPitch, int flags, float soundtime = 0.0f );
 
 	virtual float GetDistGainFromSoundLevel( soundlevel_t soundlevel, float dist );
@@ -389,7 +389,7 @@ void CEngineSoundClient::SetPlayerDSP( IRecipientFilter& filter, int dspType, bo
 }
 
 
-int CEngineSoundClient::EmitAmbientSound( const char *pSample, float flVolume, 
+void CEngineSoundClient::EmitAmbientSound( const char *pSample, float flVolume, 
 										  int iPitch, int flags, float soundtime /*= 0.0f*/ )
 {
 	float delay = 0.0f;
@@ -414,7 +414,7 @@ int CEngineSoundClient::EmitAmbientSound( const char *pSample, float flVolume,
 	params.fromserver = false;
 	params.delay = delay;
 
-	return S_StartSound( params );
+	S_StartSound( params );
 }
 
 void CEngineSoundClient::StopAllSounds(bool bClearBuffers)

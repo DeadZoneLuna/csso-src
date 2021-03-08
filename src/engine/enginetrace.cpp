@@ -72,7 +72,7 @@ abstract_class CEngineTrace : public IEngineTrace
 public:
 	CEngineTrace() { m_pRootMoveParent = NULL; }
 	// Returns the contents mask at a particular world-space position
-	virtual int		GetPointContents( const Vector &vecAbsPosition, int contentsMask, IHandleEntity** ppEntity );
+	virtual int		GetPointContents( const Vector &vecAbsPosition, IHandleEntity** ppEntity );
 
 	virtual int		GetPointContents_Collideable( ICollideable *pCollide, const Vector &vecAbsPosition );
 
@@ -281,7 +281,7 @@ int CEngineTraceServer::SpatialPartitionTriggerMask() const
 class CPointContentsEnum : public IPartitionEnumerator
 {
 public:
-	CPointContentsEnum( CEngineTrace *pEngineTrace, const Vector &pos, int contentsMask ) : m_Contents(CONTENTS_EMPTY), m_validMask(contentsMask)
+	CPointContentsEnum( CEngineTrace *pEngineTrace, const Vector &pos ) : m_Contents(CONTENTS_EMPTY) 
 	{
 		m_pEngineTrace = pEngineTrace;
 		m_Pos = pos; 
@@ -292,15 +292,13 @@ public:
 		CEngineTrace *pEngineTrace,
 		ICollideable *pCollide, 
 		const Vector &vPos, 
-		int validMask,
 		int *pContents, 
 		ICollideable **pWorldCollideable )
 	{
 		// Deal with static props
 		// NOTE: I could have added static props to a different list and
 		// enumerated them separately, but that would have been less efficient
-
-		if ( (validMask & CONTENTS_SOLID) && StaticPropMgr()->IsStaticProp( pCollide->GetEntityHandle() ) )
+		if ( StaticPropMgr()->IsStaticProp( pCollide->GetEntityHandle() ) )
 		{
 			Ray_t ray;
 			trace_t trace;
@@ -329,7 +327,7 @@ public:
 			int contents = CM_TransformedPointContents( vPos, nHeadNode, 
 				pCollide->GetCollisionOrigin(), pCollide->GetCollisionAngles() );
 
-			if (contents & validMask)
+			if (contents != CONTENTS_EMPTY)
 			{
 				// Return the contents of the first thing we hit
 				*pContents = contents;
@@ -347,7 +345,7 @@ public:
 		if (!pCollide)
 			return ITERATION_CONTINUE;
 
-		if ( CPointContentsEnum::TestEntity( m_pEngineTrace, pCollide, m_Pos, m_validMask, &m_Contents, &m_pCollide ) )
+		if ( CPointContentsEnum::TestEntity( m_pEngineTrace, pCollide, m_Pos, &m_Contents, &m_pCollide ) )
 			return ITERATION_STOP;
 		else
 			return ITERATION_CONTINUE;
@@ -377,32 +375,37 @@ public:
 private:
 	CEngineTrace *m_pEngineTrace;
 	Vector m_Pos;
-	int m_validMask;
 };
 
 
 //-----------------------------------------------------------------------------
 // Returns the contents mask at a particular world-space position
 //-----------------------------------------------------------------------------
-int	CEngineTrace::GetPointContents( const Vector &vecAbsPosition, int contentsMask, IHandleEntity** ppEntity )
+int	CEngineTrace::GetPointContents( const Vector &vecAbsPosition, IHandleEntity** ppEntity )
 {
 	VPROF( "CEngineTrace_GetPointContents" );
-	//	VPROF_BUDGET( "CEngineTrace_GetPointContents", "CEngineTrace_GetPointContents" );
-
+//	VPROF_BUDGET( "CEngineTrace_GetPointContents", "CEngineTrace_GetPointContents" );
+	
 	m_traceStatCounters[TRACE_STAT_COUNTER_POINTCONTENTS]++;
 	// First check the collision model
-	int nContents = CM_PointContents( vecAbsPosition, 0 ) & contentsMask;
-
+	int nContents = CM_PointContents( vecAbsPosition, 0 );
+	if ( nContents & MASK_CURRENT )
+	{
+		nContents = CONTENTS_WATER;
+	}
+	
 	if ( nContents != CONTENTS_SOLID )
 	{
-		CPointContentsEnum contentsEnum( this, vecAbsPosition, contentsMask );
+		CPointContentsEnum contentsEnum(this, vecAbsPosition);
 		SpatialPartition()->EnumerateElementsAtPoint( SpatialPartitionMask(),
-													  vecAbsPosition, false, &contentsEnum );
+			vecAbsPosition, false, &contentsEnum );
 
 		int nEntityContents = contentsEnum.m_Contents;
+		if ( nEntityContents & MASK_CURRENT )
+			nContents = CONTENTS_WATER;
 		if ( nEntityContents != CONTENTS_EMPTY )
 		{
-			if ( ppEntity )
+			if (ppEntity)
 			{
 				*ppEntity = contentsEnum.m_pCollide->GetEntityHandle();
 			}
@@ -411,7 +414,7 @@ int	CEngineTrace::GetPointContents( const Vector &vecAbsPosition, int contentsMa
 		}
 	}
 
-	if ( ppEntity )
+	if (ppEntity)
 	{
 		*ppEntity = GetWorldCollideable()->GetEntityHandle();
 	}
@@ -424,7 +427,7 @@ int CEngineTrace::GetPointContents_Collideable( ICollideable *pCollide, const Ve
 {
 	int contents = CONTENTS_EMPTY;
 	ICollideable *pDummy;
-	CPointContentsEnum::TestEntity( this, pCollide, vecAbsPosition, MASK_ALL, &contents, &pDummy );
+	CPointContentsEnum::TestEntity( this, pCollide, vecAbsPosition, &contents, &pDummy );
 	return contents;
 }
 

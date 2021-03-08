@@ -156,6 +156,21 @@ void DispatchEffect( const char *pName, const CEffectData &data );
 
 #endif
 
+Vector CCSPlayer::Weapon_ShootPosition()
+{
+	Vector vecPos = BaseClass::Weapon_ShootPosition();
+
+	// fail out to un-altered position
+	if ( !m_bUseNewAnimstate || !m_PlayerAnimStateCSGO )
+		return vecPos;
+
+	// warning: the modify eye position call will query and set up bones
+	// on the game server it is called when giving weapon items or firing bullets
+	m_PlayerAnimStateCSGO->ModifyEyePosition( vecPos );
+
+	return vecPos;
+}
+
 bool CCSPlayer::IsAbleToInstantRespawn( void )
 {
 	if ( CSGameRules() )
@@ -195,6 +210,10 @@ float CCSPlayer::GetPlayerMaxSpeed()
 	{
 		speed = MIN(speed, CS_PLAYER_SPEED_VIP);
 	}
+	else if ( m_hCarriedHostage != NULL )
+	{
+		speed = CS_PLAYER_SPEED_HAS_HOSTAGE;
+	}
 	else
 	{
 
@@ -213,23 +232,7 @@ float CCSPlayer::GetPlayerMaxSpeed()
 		}
 	}
 
-	if ( m_hCarriedHostage != NULL )
-	{
-		speed = MIN(speed, CS_PLAYER_SPEED_HAS_HOSTAGE);
-	}
-
 	return speed;
-}
-
-bool CCSPlayer::IsPrimaryOrSecondaryWeapon( CSWeaponType nType )
-{
-	if ( nType == WEAPONTYPE_PISTOL || nType == WEAPONTYPE_SUBMACHINEGUN || nType == WEAPONTYPE_RIFLE ||  
-		nType == WEAPONTYPE_SHOTGUN || nType == WEAPONTYPE_SNIPER_RIFLE || nType == WEAPONTYPE_MACHINEGUN )
-	{
-		return true;
-	}
-
-	return false;
 }
 
 bool CCSPlayer::IsOtherEnemy( int nEntIndex )
@@ -322,19 +325,6 @@ bool CCSPlayer::GetUseConfigurationForHighPriorityUseEntity( CBaseEntity *pEntit
 		cfg.m_flLosCheckDistance = 32;		// Check LOS if > 32 units away (2D)
 		cfg.m_flDotCheckAngle = -0.7;		// 0.7 taken from Goldsrc, +/- ~45 degrees
 		cfg.m_flDotCheckAngleMax = -0.5;	// 0.5 for it going outside the range during continuous use (120-degree cone)
-		return true;
-	}
-	return false;
-}
-
-bool CCSPlayer::GetUseConfigurationForHighPriorityUseEntity( CBaseEntity *pEntity )
-{
-	if ( dynamic_cast<CPlantedC4*>( pEntity ) )
-	{
-		return true;
-	}
-	else if ( dynamic_cast<CHostage*>( pEntity ) )
-	{
 		return true;
 	}
 	return false;
@@ -714,9 +704,9 @@ static bool TraceToExit( Vector start, Vector dir, Vector &end, trace_t &trEnter
 		Vector vecTrEnd = end - ( flStepSize * dir );
 
 		if ( nStartContents == 0 )
-			nStartContents = UTIL_PointContents( end, CS_MASK_SHOOT|CONTENTS_HITBOX );
-		
-		int nCurrentContents = UTIL_PointContents( end, CS_MASK_SHOOT|CONTENTS_HITBOX );
+			nStartContents = UTIL_PointContents( end );
+
+		int nCurrentContents = UTIL_PointContents( end );
 
 		if ( (nCurrentContents & CS_MASK_SHOOT) == 0 || ((nCurrentContents & CONTENTS_HITBOX) && nStartContents != nCurrentContents) )
 		{
@@ -1261,7 +1251,7 @@ bool CCSPlayer::HandleBulletPenetration( float &flPenetration,
 	if ( !TraceToExit( tr.endpos, vecDir, penetrationEnd, tr, exitTr, 4, MAX_PENETRATION_DISTANCE ) )
 	{
 		// ended in solid
-		if ( (UTIL_PointContents ( tr.endpos, CS_MASK_SHOOT ) & CS_MASK_SHOOT) == 0 )
+		if ( (UTIL_PointContents ( tr.endpos ) & CS_MASK_SHOOT) == 0 )
 		{
 			bFailedPenetrate = true;
 		}
@@ -1450,21 +1440,26 @@ void CCSPlayer::CreateWeaponTracer( Vector vecStart, Vector vecEnd )
 		{
 			bUseObserverTarget = true;
 		}
-		
+
+		C_BaseCombatWeapon *pActiveWeapon = GetActiveWeapon();
 		C_BaseViewModel *pViewModel = GetViewModel(WEAPON_VIEWMODEL);
 
-		if ( pWeapon->GetOwner() && pWeapon->GetOwner()->IsDormant() )
+		CBaseWeaponWorldModel *pWeaponWorldModel = NULL;
+		if ( pActiveWeapon && (!pViewModel || this->ShouldDraw()) )
+			pWeaponWorldModel = pActiveWeapon->GetWeaponWorldModel();
+
+		if ( pWeaponWorldModel && pWeaponWorldModel->HasDormantOwner() )
 		{
 			// This is likely a player firing from around a corner, where this client can't see them.
 			// Don't modify the tracer start position, since our local world weapon model position is not reliable.
 		}
-		else
+		else if (pWeaponWorldModel)
 		{
-			iAttachment = pWeapon->LookupAttachment( "muzzle_flash" );
+			iAttachment = pWeaponWorldModel->LookupAttachment( "muzzle_flash" );
 			if ( iAttachment > 0 )
-				pWeapon->GetAttachment( iAttachment, vecStart );
+				pWeaponWorldModel->GetAttachment( iAttachment, vecStart );
 		}
-		if ( pViewModel )
+		else if ( pViewModel )
 		{
 			iAttachment = pViewModel->LookupAttachment( "1" );
 			pViewModel->GetAttachment( iAttachment, vecStart );
@@ -1528,33 +1523,50 @@ void CCSPlayer::UpdateStepSound( surfacedata_t *psurface, const Vector &vecOrigi
 	BaseClass::UpdateStepSound( psurface, vecOrigin, vecVelocity  );
 }
 
-ConVar weapon_recoil_view_punch_extra( "weapon_recoil_view_punch_extra", "0.055", FCVAR_CHEAT | FCVAR_REPLICATED, "Additional (non-aim) punch added to view from recoil" );
 
-void CCSPlayer::KickBack( float fAngle, float fMagnitude )
+// GOOSEMAN : Kick the view..
+void CCSPlayer::KickBack( float up_base, float lateral_base, float up_modifier, float lateral_modifier, float up_max, float lateral_max, int direction_change )
 {
-	QAngle angleVelocity(0,0,0);
-	angleVelocity[YAW] = -sinf(DEG2RAD(fAngle)) * fMagnitude;
-	angleVelocity[PITCH] = -cosf(DEG2RAD(fAngle)) * fMagnitude;
-	angleVelocity += m_Local.m_aimPunchAngleVel.Get();
-	SetAimPunchAngleVelocity( angleVelocity );
+	float flKickUp;
+	float flKickLateral;
 
-	// this bit gives additional punch to the view (screen shake) to make the kick back a bit more visceral
-	QAngle viewPunch = GetViewPunchAngle();
-	float fViewPunchMagnitude = fMagnitude * weapon_recoil_view_punch_extra.GetFloat();
-	viewPunch[YAW] -= sinf(DEG2RAD(fAngle)) * fViewPunchMagnitude;
-	viewPunch[PITCH] -= cosf(DEG2RAD(fAngle)) * fViewPunchMagnitude;
-	SetViewPunchAngle(viewPunch);
+	if (m_iShotsFired == 1) // This is the first round fired
+	{
+		flKickUp = up_base;
+		flKickLateral = lateral_base;
+	}
+	else
+	{
+		flKickUp = up_base + m_iShotsFired*up_modifier;
+		flKickLateral = lateral_base + m_iShotsFired*lateral_modifier;
+	}
+
+
+	QAngle angle = GetPunchAngle();
+
+	angle.x -= flKickUp;
+	if ( angle.x < -1 * up_max )
+		angle.x = -1 * up_max;
+
+	if ( m_iDirection == 1 )
+	{
+		angle.y += flKickLateral;
+		if (angle.y > lateral_max)
+			angle.y = lateral_max;
+	}
+	else
+	{
+		angle.y -= flKickLateral;
+		if ( angle.y < -1 * lateral_max )
+			angle.y = -1 * lateral_max;
+	}
+
+	if ( !SharedRandomInt( "KickBack", 0, direction_change ) )
+		m_iDirection = 1 - m_iDirection;
+
+	SetPunchAngle( angle );
 }
 
-QAngle CCSPlayer::GetAimPunchAngle()
-{
-	return m_Local.m_aimPunchAngle.Get() * weapon_recoil_scale.GetFloat();
-}
-
-QAngle CCSPlayer::GetRawAimPunchAngle() const
-{
-	return m_Local.m_aimPunchAngle.Get();
-}
 
 bool CCSPlayer::CanMove() const
 {
@@ -1831,6 +1843,78 @@ AcquireResult::Type CCSPlayer::CanAcquire( CSWeaponID weaponId, AcquireMethod::T
 	}
 
 	return AcquireResult::Allowed;
+}
+
+bool CCSPlayer::UpdateDispatchLayer( CAnimationLayer *pLayer, CStudioHdr *pWeaponStudioHdr, int iSequence )
+{
+	if ( !pWeaponStudioHdr || !pLayer )
+	{
+		if ( pLayer )
+			pLayer->m_nDispatchedDst = ACT_INVALID;
+		return false;
+	}	
+
+	if ( pLayer->m_pDispatchedStudioHdr != pWeaponStudioHdr || pLayer->m_nDispatchedSrc != iSequence || pLayer->m_nDispatchedDst >= pWeaponStudioHdr->GetNumSeq() )
+	{
+		pLayer->m_pDispatchedStudioHdr = pWeaponStudioHdr;
+		pLayer->m_nDispatchedSrc = iSequence;
+		if ( pWeaponStudioHdr )
+		{
+			const char *pszSeqName = GetSequenceName( iSequence );
+			
+#ifdef DEBUG
+			if ( V_stristr( pszSeqName, "default" ) )
+			{
+				AssertMsg( false, "Warning: weapon is attempting to play its default sequence as a dispatched anim.\n" );
+			}
+#endif
+
+			// check if the weapon has a CT or T specific version of this sequence (denoted by a _t or ct suffix)
+			if ( GetTeamNumber() == TEAM_TERRORIST )
+			{
+				char pszLayerNameT[128];
+				V_sprintf_safe( pszLayerNameT, "%s_t", pszSeqName );
+				int nTeamSpecificSequenceIndex = pWeaponStudioHdr->LookupSequence( pszLayerNameT );
+				if ( nTeamSpecificSequenceIndex > 0 )
+				{
+					pLayer->m_nDispatchedDst = nTeamSpecificSequenceIndex;
+					return true;
+				}
+			}
+
+			pLayer->m_nDispatchedDst = pWeaponStudioHdr->LookupSequence( pszSeqName );
+		}
+		else
+		{
+			pLayer->m_nDispatchedDst = ACT_INVALID;
+		}
+	}
+	return (pLayer->m_nDispatchedDst > 0 );
+}
+
+bool CCSPlayer::UpdateLayerWeaponDispatch( CAnimationLayer *pLayer, int iSequence )
+{
+	CBaseCombatWeapon *pWeapon = GetActiveWeapon();
+	if ( pWeapon )
+	{
+		CBaseWeaponWorldModel *pWeaponWorldModel = pWeapon->GetWeaponWorldModel();
+		if ( pWeaponWorldModel )
+		{
+			return UpdateDispatchLayer( pLayer, pWeaponWorldModel->GetModelPtr(), iSequence );
+		}
+	}
+	return UpdateDispatchLayer( pLayer, NULL, iSequence );
+}
+
+float CCSPlayer::GetLayerSequenceCycleRate( CAnimationLayer *pLayer, int iSequence ) 
+{ 
+	UpdateLayerWeaponDispatch( pLayer, iSequence );
+	if ( pLayer->m_nDispatchedDst != ACT_INVALID )
+	{
+		// weapon world model overrides rate
+		return GetSequenceCycleRate( pLayer->m_pDispatchedStudioHdr, pLayer->m_nDispatchedDst );
+	}
+	return BaseClass::GetLayerSequenceCycleRate( pLayer, iSequence );
 }
 
 //--------------------------------------------------------------------------------------------------------------

@@ -2914,6 +2914,7 @@ CStudioHdr *C_BaseEntity::OnNewModel()
 #ifdef TF_CLIENT_DLL
 	m_bValidatedOwner = false;
 #endif
+	InvalidatePhysicsRecursive( BOUNDS_CHANGED | SEQUENCE_CHANGED );
 
 	return NULL;
 }
@@ -3198,25 +3199,22 @@ void C_BaseEntity::InterpolateServerEntities()
 {
 	VPROF_BUDGET( "C_BaseEntity::InterpolateServerEntities", VPROF_BUDGETGROUP_INTERPOLATION );
 
-	bool bPrevInterpolate = s_bInterpolate;
-	
-	// Determine whether interpolation is enabled
-	bool bInterpolate = cl_interpolate.GetBool();
-	if ( !bInterpolate && engine->IsConnected() && !engine->IsPlayingDemo() && !engine->IsClientLocalToActiveServer() )
-		bInterpolate = true; // client is connected and not playing demo and not on listen server, force interpolation ON
-	s_bInterpolate = bInterpolate;
+	s_bInterpolate = cl_interpolate.GetBool();
 
-	// Don't interpolate during timedemo playback or when engine is paused
+	// Don't interpolate during timedemo playback
 	if ( engine->IsPlayingTimeDemo() || engine->IsPaused() )
 	{										 
 		s_bInterpolate = false;
 	}
 
-	// Don't interpolate, either, if we are timing out
-	INetChannelInfo *nci = engine->GetNetChannelInfo();
-	if ( nci && nci->GetTimeSinceLastReceived() > 0.5f )
+	if ( !engine->IsPlayingDemo() )
 	{
-		s_bInterpolate = false;
+		// Don't interpolate, either, if we are timing out
+		INetChannelInfo *nci = engine->GetNetChannelInfo();
+		if ( nci && nci->GetTimeSinceLastReceived() > 0.5f )
+		{
+			s_bInterpolate = false;
+		}
 	}
 
 	if ( IsSimulatingOnAlternateTicks() != g_bWasSkipping || IsEngineThreaded() != g_bWasThreaded )
@@ -3238,17 +3236,6 @@ void C_BaseEntity::InterpolateServerEntities()
 	if ( cl_extrapolate.GetBool() && !engine->IsPaused() )
 	{
 		context.EnableExtrapolation( true );
-	}
-
-	if ( bPrevInterpolate != s_bInterpolate && !s_bInterpolate )
-	{
-		// Clear interp history when we disable interpolation
-		C_BaseEntityIterator iterator;
-		C_BaseEntity *pEnt;
-		while ( (pEnt = iterator.Next()) != NULL )
-		{
-			pEnt->ResetLatched();
-		}
 	}
 
 	// Smoothly interpolate position for server entities.
@@ -4013,6 +4000,8 @@ void C_BaseEntity::SetDormant( bool bDormant )
 	UpdateVisibility();
 
 	ParticleProp()->OwnerSetDormantTo( bDormant );
+
+	OnSetDormant( bDormant );
 }
 
 //-----------------------------------------------------------------------------

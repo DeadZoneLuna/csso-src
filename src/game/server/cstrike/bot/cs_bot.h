@@ -1314,8 +1314,6 @@ private:
 	float m_voiceEndTimestamp;
 
 	BotChatterInterface m_chatter;									///< chatter mechanism
-
-	int ObjectCaps( void ) { return ( BaseClass::ObjectCaps() | FCAP_IMPULSE_USE ); } //allow +use
 };
 
 

@@ -26,7 +26,7 @@
 /**
  * @todo Fix this
  */
-bool GetRandomSpotAtPlace( Place place, Vector *pPos )
+const Vector *GetRandomSpotAtPlace( Place place )
 {
 	int count = 0;
 
@@ -39,8 +39,8 @@ bool GetRandomSpotAtPlace( Place place, Vector *pPos )
 	}
 
 	if (count == 0)
-		return false;
-		
+		return NULL;
+
 	int which = RandomInt( 0, count-1 );
 
 	FOR_EACH_VEC( TheNavAreas, rit )
@@ -48,13 +48,10 @@ bool GetRandomSpotAtPlace( Place place, Vector *pPos )
 		CNavArea *area = TheNavAreas[ rit ];
 
 		if (area->GetPlace() == place && which == 0)
-		{
-			*pPos = area->GetCenter();
-			return true;
-		}
+			return &area->GetCenter();
 	}
 
-	return false;
+	return NULL;
 }
 
 

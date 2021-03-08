@@ -65,7 +65,7 @@ void CWeaponMAG7::PrimaryAttack()
 	if ( !pPlayer )
 		return;
 
-	float flCycleTime = GetCSWpnData().m_flCycleTime[m_weaponMode];
+	float flCycleTime = GetCSWpnData().m_flCycleTime;
 
 	// don't fire underwater
 	if ( pPlayer->GetWaterLevel() == 3 )
@@ -104,7 +104,7 @@ void CWeaponMAG7::PrimaryAttack()
 	FX_FireBullets(
 		pPlayer->entindex(),
 		pPlayer->Weapon_ShootPosition(),
-		pPlayer->GetFinalAimAngle(),
+		pPlayer->EyeAngles() + 2.0f * pPlayer->GetPunchAngle(),
 		GetWeaponID(),
 		Primary_Mode,
 		CBaseEntity::GetPredictionRandomSeed() & 255, // wrap it for network traffic so it's the same between client and server
@@ -126,8 +126,17 @@ void CWeaponMAG7::PrimaryAttack()
 	// update accuracy
 	m_fAccuracyPenalty += GetCSWpnData().m_fInaccuracyImpulseFire[Primary_Mode];
 
-	// table driven recoil
-	Recoil( m_weaponMode );
+	// Update punch angles.
+	QAngle angle = pPlayer->GetPunchAngle();
 
-	m_flRecoilIndex += 1.0f;
+	if ( pPlayer->GetFlags() & FL_ONGROUND )
+	{
+		angle.x -= SharedRandomInt( "MAG7PunchAngleGround", 3, 5 );
+	}
+	else
+	{
+		angle.x -= SharedRandomInt( "MAG7PunchAngleAir", 7, 10 );
+	}
+
+	pPlayer->SetPunchAngle( angle );
 }

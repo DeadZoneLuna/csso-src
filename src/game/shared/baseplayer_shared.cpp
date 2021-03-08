@@ -90,9 +90,6 @@
 
 ConVar sv_infinite_ammo( "sv_infinite_ammo", "0", FCVAR_REPLICATED, "Player's active weapon will never run out of ammo. If set to 2 then player has infinite total ammo but still has to reload the magazine." );
 
-ConVar view_punch_decay( "view_punch_decay", "18", FCVAR_CHEAT | FCVAR_REPLICATED, "Decay factor exponent for view punch" );
-ConVar view_recoil_tracking( "view_recoil_tracking", "0.45", FCVAR_CHEAT | FCVAR_REPLICATED, "How closely the view tracks with the aim punch from weapon recoil" );
-
 #ifdef CLIENT_DLL
 ConVar mp_usehwmmodels( "mp_usehwmmodels", "0", NULL, "Enable the use of the hw morph models. (-1 = never, 1 = always, 0 = based upon GPU)" ); // -1 = never, 0 = if hasfastvertextextures, 1 = always
 #endif
@@ -685,9 +682,7 @@ void CBasePlayer::UpdateStepSound( surfacedata_t *psurface, const Vector &vecOri
 		fvol *= 0.65;
 	}
 
-#ifdef CSTRIKE_DLL
-	fvol *= 0.5; // vanilla source 2013 soundsystem sucks
-#endif
+	fvol *= 0.4; // standart source 2013 soundsystem sucks
 	PlayStepSound( feet, psurface, fvol, false );
 }
 
@@ -838,11 +833,7 @@ void CBasePlayer::PlayStepSound( Vector &vecOrigin, surfacedata_t *psurface, flo
 	EmitSound_t epSuitSound;
 	epSuitSound.m_nChannel = CHAN_AUTO;
 	epSuitSound.m_pSoundName = paramsSuitSound.soundname;
-#ifdef CSTRIKE_DLL
-	epSuitSound.m_flVolume = fvol * 0.25; // vanilla source 2013 soundsystem sucks
-#else
-	epSuitSound.m_flVolume = fvol;
-#endif
+	epSuitSound.m_flVolume = fvol * 0.25; // standart source 2013 soundsystem sucks
 	epSuitSound.m_SoundLevel = paramsSuitSound.soundlevel;
 	epSuitSound.m_nFlags = 0;
 	epSuitSound.m_nPitch = paramsSuitSound.pitch;
@@ -1170,8 +1161,7 @@ float IntervalDistance( float x, float x0, float x1 )
 CBaseEntity *CBasePlayer::FindUseEntity()
 {
 	Vector forward, up;
-	// NOTE: This doesn't handle the case when the player is in a vehicle.
-	AngleVectors( GetFinalAimAngle(), &forward, NULL, &up );
+	EyeVectors( &forward, NULL, &up );
 
 	trace_t tr;
 	// Search for objects in a sphere (tests for entities that are not solid, yet still useable)
@@ -1182,9 +1172,12 @@ CBaseEntity *CBasePlayer::FindUseEntity()
 	int useableContents = MASK_SOLID | CONTENTS_DEBRIS | CONTENTS_PLAYERCLIP;
 
 #ifdef CSTRIKE_DLL
-	useableContents = (MASK_NPCSOLID_BRUSHONLY | MASK_OPAQUE_AND_NPCS) & ~CONTENTS_OPAQUE;
+	useableContents = MASK_NPCSOLID_BRUSHONLY | MASK_OPAQUE_AND_NPCS;
 #endif
 
+#ifdef HL1_DLL
+	useableContents = MASK_SOLID;
+#endif
 #ifndef CLIENT_DLL
 	CBaseEntity *pFoundByTrace = NULL;
 #endif
@@ -1197,16 +1190,10 @@ CBaseEntity *CBasePlayer::FindUseEntity()
 	CBaseEntity *pNearest = NULL;
 
 	const int NUM_TANGENTS = 8;
-
-#if defined( CSTRIKE_DLL ) && defined( GAME_DLL )
-	const int NUM_TRACES = 1;
-#else
-	const int NUM_TRACES = NUM_TANGENTS;
-#endif
 	// trace a box at successive angles down
 	//							forward, 45 deg, 30 deg, 20 deg, 15 deg, 10 deg, -10, -15
 	const float tangents[NUM_TANGENTS] = { 0, 1, 0.57735026919f, 0.3639702342f, 0.267949192431f, 0.1763269807f, -0.1763269807f, -0.267949192431f };
-	for ( int i = 0; i < NUM_TRACES; i++ )
+	for ( int i = 0; i < NUM_TANGENTS; i++ )
 	{
 		if ( i == 0 )
 		{
@@ -1236,14 +1223,9 @@ CBaseEntity *CBasePlayer::FindUseEntity()
 			float centerZ = CollisionProp()->WorldSpaceCenter().z;
 			delta.z = IntervalDistance( tr.endpos.z, centerZ + CollisionProp()->OBBMins().z, centerZ + CollisionProp()->OBBMaxs().z );
 			float dist = delta.Length();
-#if defined( CSTRIKE_DLL )
 			CCSPlayer *pPlayer = dynamic_cast<CCSPlayer*>( pObject );
 			if ( (pPlayer && pPlayer->IsBot() && dist < PLAYER_USE_BOT_RADIUS) || dist < PLAYER_USE_RADIUS )
 			{
-#else
-			if ( dist < PLAYER_USE_RADIUS )
-			{
-#endif
 #ifndef CLIENT_DLL
 
 				if ( sv_debug_player_use.GetBool() )
@@ -1292,11 +1274,6 @@ CBaseEntity *CBasePlayer::FindUseEntity()
 		}
 	}
 
-#if defined( CSTRIKE_DLL ) && defined( GAME_DLL )
-	CCSPlayer* pPlayer = ToCSPlayer( this );
-	const float MIN_DOT_FOR_WEAPONS = 0.99f;
-#endif
-
 	for ( CEntitySphereQuery sphere( searchCenter, PLAYER_USE_RADIUS ); ( pObject = sphere.GetCurrentEntity() ) != NULL; sphere.NextEntity() )
 	{
 		if ( !pObject )
@@ -1309,26 +1286,12 @@ CBaseEntity *CBasePlayer::FindUseEntity()
 		Vector point;
 		pObject->CollisionProp()->CalcNearestPoint( searchCenter, &point );
 
-		float fMinimumDot = 0.8f; // pObject->GetUseLookAtAngle()
-
-#if defined( CSTRIKE_DLL ) && defined( GAME_DLL )
-		CWeaponCSBase *pWeapon = dynamic_cast<CWeaponCSBase*>( pObject );
-		CSWeaponType nWepType = WEAPONTYPE_UNKNOWN;
-		if ( pWeapon )
-		{
-			nWepType = pWeapon->GetWeaponType();
-
-			if ( pPlayer->IsPrimaryOrSecondaryWeapon( nWepType ) )
-				fMinimumDot = MIN_DOT_FOR_WEAPONS;
-		}
-#endif
-
 		Vector dir = point - searchCenter;
 		VectorNormalize(dir);
 		float dot = DotProduct( dir, forward );
 
 		// Need to be looking at the object more or less
-		if ( dot < fMinimumDot )
+		if ( dot < 0.8 )
 			continue;
 
 		float dist = CalcDistanceToLine( point, searchCenter, forward );
@@ -1515,7 +1478,8 @@ void CBasePlayer::PlayerUse ( void )
 				bOpenBuyWithUse = false;
 		}
 
-		if ( pWeapon && pPlayer->IsPrimaryOrSecondaryWeapon( nWepType ) )
+		if ( pWeapon && (pWeapon->IsKindOf( WEAPONTYPE_PISTOL ) || pWeapon->IsKindOf( WEAPONTYPE_SUBMACHINEGUN ) || pWeapon->IsKindOf( WEAPONTYPE_RIFLE ) ||
+						pWeapon->IsKindOf( WEAPONTYPE_SHOTGUN ) || pWeapon->IsKindOf( WEAPONTYPE_SNIPER_RIFLE ) || pWeapon->IsKindOf( WEAPONTYPE_MACHINEGUN )) )
 		{
 			bool bPickupIsSecondary = pWeapon->IsKindOf( WEAPONTYPE_PISTOL );
 			CBaseCombatWeapon *pPlayerWeapon = NULL;
@@ -1619,7 +1583,6 @@ void CBasePlayer::PlayerUse ( void )
 					CBaseCombatWeapon *pC4 = pBot->Weapon_OwnsThisType( "weapon_c4" );
 					if ( pC4 )
 					{
-						pBot->SetBombDroppedTime( gpGlobals->curtime );
 						pBot->CSWeaponDrop( pC4, WorldSpaceCenter(), false );
 						pBot->Radio( "Radio.YouTakeThePoint", "#Cstrike_TitlesTXT_Game_afk_bomb_drop" );
 					}
@@ -1683,7 +1646,7 @@ void CBasePlayer::ViewPunch( const QAngle &angleOffset )
 	if ( IsInAVehicle() )
 		return;
 
-	m_Local.m_viewPunchAngle += angleOffset;
+	m_Local.m_vecPunchAngleVel += angleOffset * 20;
 }
 
 //-----------------------------------------------------------------------------
@@ -1694,11 +1657,12 @@ void CBasePlayer::ViewPunchReset( float tolerance )
 	if ( tolerance != 0 )
 	{
 		tolerance *= tolerance;	// square
-		float check = m_Local.m_viewPunchAngle->LengthSqr();
+		float check = m_Local.m_vecPunchAngleVel->LengthSqr() + m_Local.m_vecPunchAngle->LengthSqr();
 		if ( check > tolerance )
 			return;
 	}
-	m_Local.m_viewPunchAngle = vec3_angle;
+	m_Local.m_vecPunchAngle = vec3_angle;
+	m_Local.m_vecPunchAngleVel = vec3_angle;
 }
 
 #if defined( CLIENT_DLL )
@@ -1886,12 +1850,9 @@ void CBasePlayer::CalcPlayerView( Vector& eyeOrigin, QAngle& eyeAngles, float& f
 	CalcViewRoll( eyeAngles );
 
 	CalcAddViewmodelCameraAnimation( eyeOrigin, eyeAngles );
-	
-	// Apply punch angles
-	VectorAdd( eyeAngles, m_Local.m_viewPunchAngle, eyeAngles );
 
-	// TODO[pmf]: apply a scaling factor to this
-	VectorAdd( eyeAngles, GetAimPunchAngle() * view_recoil_tracking.GetFloat(), eyeAngles );
+	// Apply punch angle
+	VectorAdd( eyeAngles, m_Local.m_vecPunchAngle, eyeAngles );
 
 #if defined( CLIENT_DLL )
 	if ( !prediction->InPrediction() )
@@ -1949,7 +1910,7 @@ void CBasePlayer::CalcVehicleView(
 	CalcAddViewmodelCameraAnimation( eyeOrigin, eyeAngles );
 
 	// Apply punch angle
-	VectorAdd( eyeAngles, m_Local.m_viewPunchAngle, eyeAngles );
+	VectorAdd( eyeAngles, m_Local.m_vecPunchAngle, eyeAngles );
 
 #if defined( CLIENT_DLL )
 	if ( !prediction->InPrediction() )

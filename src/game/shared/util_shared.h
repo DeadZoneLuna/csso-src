@@ -327,9 +327,9 @@ void UTIL_TraceEntity( CBaseEntity *pEntity, const Vector &vecAbsStart, const Ve
 
 bool UTIL_EntityHasMatchingRootParent( CBaseEntity *pRootParent, CBaseEntity *pEntity );
 
-inline int UTIL_PointContents( const Vector &vec, int contentsMask )
+inline int UTIL_PointContents( const Vector &vec )
 {
-	return enginetrace->GetPointContents( vec, contentsMask );
+	return enginetrace->GetPointContents( vec );
 }
 
 // Sweeps against a particular model, using collision rules 
@@ -738,6 +738,5 @@ bool				UTIL_IsHolidayActive( /*EHoliday*/ int eHoliday );
 const char		   *UTIL_GetActiveHolidayString();
 
 bool				UTIL_IsNewYear();
-bool				UTIL_IsCSSOBirthday();
 
 #endif // UTIL_SHARED_H

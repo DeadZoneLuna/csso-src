@@ -33,6 +33,7 @@ CWeaponCSBaseGun::CWeaponCSBaseGun()
 
 void CWeaponCSBaseGun::Spawn()
 {
+	m_flAccuracy = 0.2;
 	m_bDelayFire = false;
 	m_zoomFullyActiveTime = -1.0f;
 
@@ -48,6 +49,7 @@ bool CWeaponCSBaseGun::Deploy()
 	if ( !pPlayer )
 		return false;
 
+	m_flAccuracy = 0.2;
 	pPlayer->m_iShotsFired = 0;
 	m_bDelayFire = false;
 	m_zoomFullyActiveTime = -1.0f;
@@ -98,7 +100,7 @@ void CWeaponCSBaseGun::SecondaryAttack()
 	{
 		if ( IsRevolver() && m_flNextSecondaryAttack < gpGlobals->curtime )
 		{
-			float flCycletimeAlt = GetCSWpnData().m_flCycleTime[Secondary_Mode];
+			float flCycletimeAlt = GetCSWpnData().m_flCycleTimeAlt;
 			m_weaponMode = Secondary_Mode;
 			UpdateAccuracyPenalty();
 #ifndef CLIENT_DLL
@@ -137,6 +139,8 @@ bool CWeaponCSBaseGun::CSBaseGunFire( float flCycleTime, CSWeaponMode weaponMode
 
 	if ( m_iClip1 == 0 )
 	{
+		m_flAccuracy = 0;
+
 		if ( m_bFireOnEmpty )
 		{
 			PlayEmptySound();
@@ -151,7 +155,7 @@ bool CWeaponCSBaseGun::CSBaseGunFire( float flCycleTime, CSWeaponMode weaponMode
 
 			if ( IsRevolver() )
 			{
-				m_flNextPrimaryAttack = m_flNextSecondaryAttack = gpGlobals->curtime + GetCSWpnData().m_flCycleTime[weaponMode];
+				m_flNextPrimaryAttack = m_flNextSecondaryAttack = gpGlobals->curtime + ((weaponMode == Primary_Mode) ? (GetCSWpnData().m_flCycleTime) : (GetCSWpnData().m_flCycleTimeAlt));
 				BaseClass::SendWeaponAnim( ACT_VM_DRYFIRE ); // empty!
 			}
 			m_bFireOnEmpty = false;
@@ -192,7 +196,7 @@ bool CWeaponCSBaseGun::CSBaseGunFire( float flCycleTime, CSWeaponMode weaponMode
 	FX_FireBullets(
 		pPlayer->entindex(),
 		pPlayer->Weapon_ShootPosition(),
-		pPlayer->GetFinalAimAngle(),
+		pPlayer->EyeAngles() + 2.0f * pPlayer->GetPunchAngle(),
 		GetWeaponID(),
 		weaponMode,
 		CBaseEntity::GetPredictionRandomSeed() & 255,
@@ -216,10 +220,7 @@ bool CWeaponCSBaseGun::CSBaseGunFire( float flCycleTime, CSWeaponMode weaponMode
 	// update accuracy
 	m_fAccuracyPenalty += GetCSWpnData().m_fInaccuracyImpulseFire[weaponMode];
 
-	// table driven recoil
-	Recoil( weaponMode );
-
-	m_flRecoilIndex += 1.0f;
+	++pPlayer->m_iShotsFired;
 
 	return true;
 }
@@ -260,6 +261,7 @@ bool CWeaponCSBaseGun::Reload()
 		pPlayer->SetFOV( pPlayer, pPlayer->GetDefaultFOV() );
 	}
 
+	m_flAccuracy = 0.2;
 	pPlayer->m_iShotsFired = 0;
 	m_bDelayFire = false;
 

@@ -795,11 +795,7 @@ void CClient_Precipitation::CreateAshParticle( void )
 		m_Ash.m_iAshCount = 0;
 	}
 
-#ifdef CSTRIKE_DLL
-		C_CSPlayer *pPlayer = GetLocalOrInEyeCSPlayer();
-#else
-		C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
-#endif
+	C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
 	if ( pPlayer == NULL )
 		return;
 
@@ -1281,11 +1277,7 @@ void CClient_Precipitation::EmitParticles( float fTimeDelta )
 	Vector2D size;
 	Vector vel, org;
 	
-#ifdef CSTRIKE_DLL
-		C_CSPlayer *pPlayer = GetLocalOrInEyeCSPlayer();
-#else
-		C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
-#endif
+	C_CSPlayer *pPlayer = GetLocalOrInEyeCSPlayer();
 
 	if ( !pPlayer )
 		return;

@@ -147,8 +147,25 @@ void CWeaponM4A1::PrimaryAttack()
 	if ( !pPlayer )
 		return;
 
-	if ( !CSBaseGunFire( GetCSWpnData().m_flCycleTime[m_weaponMode], m_weaponMode ) )
+	if ( !CSBaseGunFire( GetCSWpnData().m_flCycleTime, m_weaponMode ) )
 		return;
+
+	pPlayer = GetPlayerOwner();
+
+	// CSBaseGunFire can kill us, forcing us to drop our weapon, if we shoot something that explodes
+	if ( !pPlayer )
+		return;
+
+	pPlayer->DoMuzzleFlash();
+
+	if (pPlayer->GetAbsVelocity().Length2D() > 5)
+		pPlayer->KickBack (1.0, 0.45, 0.28, 0.045, 3.75, 3, 7);
+	else if ( !FBitSet( pPlayer->GetFlags(), FL_ONGROUND ) )
+		pPlayer->KickBack (1.2, 0.5, 0.23, 0.15, 5.5, 3.5, 6);
+	else if ( FBitSet( pPlayer->GetFlags(), FL_DUCKING ) )
+		pPlayer->KickBack (0.6, 0.3, 0.2, 0.0125, 3.25, 2, 7);
+	else
+		pPlayer->KickBack (0.65, 0.35, 0.25, 0.015, 3.5, 2.25, 7);
 }
 
 bool CWeaponM4A1::Reload()
@@ -172,6 +189,7 @@ bool CWeaponM4A1::Reload()
 		pPlayer->SetFOV( pPlayer, pPlayer->GetDefaultFOV() );
 	}
 
+	m_flAccuracy = 0.2;
 	pPlayer->m_iShotsFired = 0;
 	m_bDelayFire = false;
 	return true;
@@ -222,7 +240,15 @@ void CWeaponM4A1::Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatChar
 				}
 
 				//world model
-				SetBodygroup( FindBodygroupByName( "silencer" ), 0 );
+				CBaseWeaponWorldModel *pWorldModel = GetWeaponWorldModel();
+				if ( pWorldModel )
+				{
+					pWorldModel->SetBodygroup( FindBodygroupByName( "silencer" ), 0 );
+				}
+				else
+				{
+					SetBodygroup( FindBodygroupByName( "silencer" ), 0 );
+				}
 				break;
 			}
 			case AE_CL_HIDE_SILENCER:
@@ -234,7 +260,15 @@ void CWeaponM4A1::Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatChar
 				}
 
 				//world model
-				SetBodygroup( FindBodygroupByName( "silencer" ), 1 );
+				CBaseWeaponWorldModel *pWorldModel = GetWeaponWorldModel();
+				if ( pWorldModel )
+				{
+					pWorldModel->SetBodygroup( FindBodygroupByName( "silencer" ), 1 );
+				}
+				else
+				{
+					SetBodygroup( FindBodygroupByName( "silencer" ), 1 );
+				}
 				break;
 			}
 		}

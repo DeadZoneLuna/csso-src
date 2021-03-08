@@ -8,10 +8,6 @@
 #include "cbase.h"
 #include "tier0/vprof.h"
 #include "colorcorrectionmgr.h"
-#include "clientmode.h"
-
-// NOTE: This has to be the last file included!
-#include "tier0/memdbgon.h"
 
 
 //------------------------------------------------------------------------------
@@ -28,6 +24,7 @@ CColorCorrectionMgr::CColorCorrectionMgr()
 {
 	m_nActiveWeightCount = 0;
 }
+
 
 //------------------------------------------------------------------------------
 // Creates, destroys color corrections
@@ -65,39 +62,16 @@ void CColorCorrectionMgr::RemoveColorCorrection( ClientCCHandle_t h )
 	}
 }
 
+
 //------------------------------------------------------------------------------
 // Modify color correction weights
 //------------------------------------------------------------------------------
-void CColorCorrectionMgr::SetColorCorrectionWeight( ClientCCHandle_t h, float flWeight, bool bExclusive )
+void CColorCorrectionMgr::SetColorCorrectionWeight( ClientCCHandle_t h, float flWeight )
 {
 	if ( h != INVALID_CLIENT_CCHANDLE )
 	{
-		SetWeightParams_t params = { h, flWeight, bExclusive };
-		m_colorCorrectionWeights.AddToTail( params );
-		if( bExclusive && m_bHaveExclusiveWeight && ( flWeight != 0.0f ) )
-		{
-			DevWarning( "Found multiple active color_correction entities with exclusive setting enabled. This is invalid.\n" );
-		}
-		if ( bExclusive )
-		{
-			m_bHaveExclusiveWeight = true;
-			m_flExclusiveWeight = flWeight;
-		}
-	}
-}
-
-void CColorCorrectionMgr::CommitColorCorrectionWeights()
-{
-	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
-
-	for ( int i = 0; i < m_colorCorrectionWeights.Count(); i++ )
-	{
-		ColorCorrectionHandle_t ccHandle = reinterpret_cast<ColorCorrectionHandle_t>( m_colorCorrectionWeights[i].handle );
-		float flWeight = m_colorCorrectionWeights[i].flWeight;
-		if ( !m_colorCorrectionWeights[i].bExclusive )
-		{
-			flWeight = (1.0f - m_flExclusiveWeight ) * m_colorCorrectionWeights[i].flWeight;
-		}
+		CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+		ColorCorrectionHandle_t ccHandle = (ColorCorrectionHandle_t)h;
 		pRenderContext->SetLookupWeight( ccHandle, flWeight );
 
 		// FIXME: NOTE! This doesn't work if the same handle has
@@ -108,7 +82,6 @@ void CColorCorrectionMgr::CommitColorCorrectionWeights()
 			++m_nActiveWeightCount;
 		}
 	}
-	m_colorCorrectionWeights.RemoveAll();
 }
 
 void CColorCorrectionMgr::ResetColorCorrectionWeights()
@@ -120,9 +93,6 @@ void CColorCorrectionMgr::ResetColorCorrectionWeights()
 	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
 	pRenderContext->ResetLookupWeights();
 	m_nActiveWeightCount = 0;
-	m_bHaveExclusiveWeight = false;
-	m_flExclusiveWeight = 0.0f;
-	m_colorCorrectionWeights.RemoveAll();
 }
 
 void CColorCorrectionMgr::SetResetable( ClientCCHandle_t h, bool bResetable )
@@ -145,22 +115,5 @@ void CColorCorrectionMgr::SetResetable( ClientCCHandle_t h, bool bResetable )
 //------------------------------------------------------------------------------
 bool CColorCorrectionMgr::HasNonZeroColorCorrectionWeights() const
 {
-	return (m_nActiveWeightCount != 0);
-}
-
-void CColorCorrectionMgr::UpdateColorCorrection()
-{
-	ResetColorCorrectionWeights();
-	C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
-	IClientMode *pClientMode = g_pClientMode;
-
-	Assert( pClientMode );
-	if ( !pPlayer || !pClientMode )
-	{
-		return;
-	}
-
-	pClientMode->OnColorCorrectionWeightsReset();
-
-	CommitColorCorrectionWeights();
+	return ( m_nActiveWeightCount != 0 );
 }

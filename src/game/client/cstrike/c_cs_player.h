@@ -18,13 +18,107 @@
 #include "baseparticleentity.h"
 #include "beamdraw.h"
 #include "cs_gamerules.h"
-#include "weapon_basecsgloves.h"
+#include "csgo_playeranimstate.h"
 
 #include "cs_player_shared.h"
 
 class C_PhysicsProp;
 
 extern ConVar cl_disablefreezecam;
+
+
+#define BONESNAPSHOT_ENTIRE_BODY 0
+#define BONESNAPSHOT_UPPER_BODY 1
+
+#define BONESNAPSHOT_DECAYDURATION_MIN 0
+#define BONESNAPSHOT_DECAYDURATION_MAX 0.4f
+
+class CBoneSnapshot
+{
+public:
+	void			Update( CBaseAnimating* pEnt, bool bReadOnly = false );	
+	inline void		UpdateReadOnly( void ) { Update( m_pEnt, true ); }
+
+	void			SetShouldCapture( void )					{ m_bCapturePending = true; }
+
+	void SetShouldCapture( float flNewDecayDuration )
+	{
+		m_bCapturePending = true;
+		m_flDecayIdealDuration = clamp( flNewDecayDuration, BONESNAPSHOT_DECAYDURATION_MIN, BONESNAPSHOT_DECAYDURATION_MAX );
+		m_flDecayStartTime = gpGlobals->curtime;
+		m_flDecayEndTime = m_flDecayStartTime + m_flDecayIdealDuration;
+	}
+
+	bool			IsCapturePending( void )	{ return (m_bEnabled && m_bCapturePending); }
+
+	void			Enable( void )				{ if ( !m_bEnabled ) { AbandonAnyPending(); } m_bEnabled = true; }
+	void			Disable( void )				{ if ( m_bEnabled ) { AbandonAnyPending(); } m_bEnabled = false; }
+
+	float			GetCurrentWeight( void )	{ return m_flWeight; }
+	
+	void			SetLastBoneSetupTimeIndex( void ) { m_flLastBoneSetupTimeIndex = gpGlobals->curtime; }
+	
+	void Init( void )
+	{
+		m_pEnt = NULL;
+		m_flWeight = 0;
+		memset( m_Weightlist, 0, ARRAYSIZE(m_Weightlist) );
+		m_bWeightlistInitialized = false;
+		m_bEnabled = false;
+		m_bCapturePending = false;
+		m_vecSubordinateSnapshots.RemoveAll();
+		m_flDecayIdealDuration = 0.25f;
+		m_flDecayStartTime = 0;
+		m_flDecayEndTime = 0;
+		m_vecWorldCapturePos.Init();
+		m_flLastBoneSetupTimeIndex = 0;
+		m_nStudioRenderHdrId = -1;
+	}
+
+	void Init( CBaseAnimating* pEnt )			{ Init(); m_pEnt = pEnt; }
+	CBoneSnapshot() { Init(); }
+
+	void AddSubordinate( CBoneSnapshot* pSnapshot )
+	{
+		if ( !m_vecSubordinateSnapshots.HasElement(pSnapshot) )
+		{
+			m_vecSubordinateSnapshots[ m_vecSubordinateSnapshots.AddToTail() ] = pSnapshot;
+		}
+	}
+
+	void AbandonAnyPending( void )
+	{
+		m_flWeight = 0;
+		m_bCapturePending = false;
+	}
+
+	void SetWeightListName( const char* szWeightListName ) { m_szWeightlistName = szWeightListName; }
+
+private:
+
+	CBaseAnimating* m_pEnt;
+	float			m_flWeight;
+	matrix3x4_t		m_Cache[ MAXSTUDIOBONES ];
+	const char*		m_szWeightlistName;
+	float			m_Weightlist[ MAXSTUDIOBONES ];
+	bool			m_bWeightlistInitialized;
+	bool			m_bEnabled;
+	bool			m_bCapturePending;
+	float			m_flDecayIdealDuration;
+	float			m_flDecayStartTime;
+	float			m_flDecayEndTime;
+	Vector			m_vecWorldCapturePos;
+	float			m_flLastBoneSetupTimeIndex;
+	int				m_nStudioRenderHdrId;
+
+	CUtlVector<CBoneSnapshot*> m_vecSubordinateSnapshots;
+
+	void			CaptureSnapshot( void );
+	void			PlaybackSnapshot( void );
+	void			InitWeightList( void );
+	bool			IsBoneSetupTimeIndexRecent( void ) { return (gpGlobals->curtime - m_flLastBoneSetupTimeIndex) <= 0.25f; }
+};
+
 
 class CAddonModel
 {
@@ -47,7 +141,11 @@ public:
 	C_CSPlayer();
 	~C_CSPlayer();
 
+	virtual	void Spawn( void );
+	virtual void SetSequence( int nSequence ) OVERRIDE;
+
 	virtual void Simulate();
+	virtual void OnSetDormant( bool bDormant );
 
 	void GiveCarriedHostage( EHANDLE hHostage );
 	void RefreshCarriedHostage( bool bForceCreate );
@@ -124,7 +222,17 @@ public:
 	CUtlVector< C_BaseParticleEntity* > m_SmokeGrenades;
 
 	virtual bool ShouldDraw( void );
+	virtual bool UpdateDispatchLayer( CAnimationLayer *pLayer, CStudioHdr *pWeaponStudioHdr, int iSequence ) OVERRIDE;
+	virtual void AccumulateLayers( IBoneSetup &boneSetup, Vector pos[], Quaternion q[], float currentTime );
+	bool UpdateLayerWeaponDispatch( C_AnimationLayer *pLayer, int iSequence );
+	virtual float GetLayerSequenceCycleRate( C_AnimationLayer *pLayer, int iSequence );
 	virtual void BuildTransformations( CStudioHdr *pStudioHdr, Vector *pos, Quaternion q[], const matrix3x4_t& cameraTransform, int boneMask, CBoneBitList &boneComputed );
+
+	virtual void DoExtraBoneProcessing( CStudioHdr *pStudioHdr, Vector pos[], Quaternion q[], matrix3x4_t boneToWorld[], CBoneBitList &boneComputed, CIKContext *pIKContext ) OVERRIDE;
+	
+	virtual bool SetupBones( matrix3x4_t *pBoneToWorldOut, int nMaxBones, int boneMask, float currentTime );
+
+	void ReevauluateAnimLOD( int boneMask = 0 );
 
 	virtual C_BaseAnimating * BecomeRagdollOnClient();
 	virtual IRagdoll* GetRepresentativeRagdoll() const;
@@ -148,6 +256,8 @@ public:
 
 	virtual bool IsLookingAtWeapon( void ) const { return m_bIsLookingAtWeapon; }
 	virtual bool IsHoldingLookAtWeapon( void ) const { return m_bIsHoldingLookAtWeapon; }
+
+	virtual int DrawModel( int flags );
 
 	virtual bool ShouldReceiveProjectedTextures( int flags )
 	{
@@ -195,6 +305,8 @@ public:
 	bool IsOtherEnemy( CCSPlayer *pPlayer );
 	bool IsOtherEnemy( int nEntIndex );
 
+	virtual void SetModelPointer( const model_t *pModel );
+
 
 // Called by shared code.
 public:
@@ -213,10 +325,8 @@ public:
 // Implemented in shared code.
 public:
 	virtual float GetPlayerMaxSpeed();
-	bool IsPrimaryOrSecondaryWeapon( CSWeaponType nType );
 
 	bool GetUseConfigurationForHighPriorityUseEntity( CBaseEntity *pEntity, CConfigurationForHighPriorityUseEntity_t &cfg );
-	bool GetUseConfigurationForHighPriorityUseEntity( CBaseEntity *pEntity );
 	CBaseEntity *GetUsableHighPriorityEntity( void );
 
 	void GetBulletTypeParameters(
@@ -255,12 +365,14 @@ public:
 		float flCurrentDistance,
 		float &fCurrentDamage );
 
-	virtual QAngle	GetAimPunchAngle( void );
-	QAngle	GetRawAimPunchAngle( void ) const;
-
 	void KickBack(
-		float fAngle,
-		float fMagnitude );
+		float up_base,
+		float lateral_base,
+		float up_modifier,
+		float lateral_modifier,
+		float up_max,
+		float lateral_max,
+		int direction_change );
 
 	// Returns true if the player is allowed to move.
 	bool CanMove() const;
@@ -272,8 +384,6 @@ public:
 	bool IsVIP() const;	// Is this player the VIP?
 
 	virtual void SetAnimation( PLAYER_ANIM playerAnim );
-	
-	virtual bool ShouldInterpolate( void );
 
 
 public:
@@ -285,14 +395,17 @@ public:
 	void SetActivity( Activity eActivity );
 	Activity GetActivity( void ) const;
 
+	void DoAnimStateEvent( PlayerAnimEvent_t evt );
+
 	// Global/static methods
 	virtual void ThirdPersonSwitch( bool bThirdperson );
-
-	IPlayerAnimState *GetPlayerAnimState() { return m_PlayerAnimState; }
 
 public:
 
 	IPlayerAnimState *m_PlayerAnimState;
+	CCSGOPlayerAnimState *m_PlayerAnimStateCSGO;
+
+	virtual Vector Weapon_ShootPosition();
 
 	// Used to control animation state.
 	Activity m_Activity;
@@ -314,9 +427,23 @@ public:
 	CNetworkVar( bool, m_bKilledByTaser );
 	CNetworkVar( int, m_iMoveState );		// Is the player trying to run or walk or idle?  Tells us what the player is "trying" to do.
 
+	CNetworkVar( float, m_flLowerBodyYawTarget );
+	CNetworkVar( bool, m_bStrafing );
+
+	bool m_bUseNewAnimstate;
+
+	CBoneSnapshot m_boneSnapshots[2];
+	bool IsAnyBoneSnapshotPending( void );
+
+	float m_flLastSpawnTimeIndex;
+
 	const PlayerViewmodelArmConfig *m_pViewmodelArmConfig;
 
 	bool IsInHostageRescueZone( void );
+
+	virtual void NotifyOnLayerChangeSequence( const CAnimationLayer* pLayer, const int nNewSequence ) OVERRIDE;
+	virtual void NotifyOnLayerChangeWeight( const CAnimationLayer* pLayer, const float flNewWeight ) OVERRIDE;
+	virtual void NotifyOnLayerChangeCycle( const CAnimationLayer* pLayer, const float flNewCycle ) OVERRIDE;
 
 	// This is a combination of the ADDON_ flags in cs_shareddefs.h.
 	CNetworkVar( int, m_iAddonBits );
@@ -375,18 +502,8 @@ public:
 
 	float m_flNightVisionAlpha;
 
-	float m_flFlashBangTime;		// end time
-	float m_flFlashScreenshotAlpha;
-	float m_flFlashOverlayAlpha;
-	bool m_bFlashBuildUp;
-	bool m_bFlashDspHasBeenCleared;
-	bool m_bFlashScreenshotHasBeenGrabbed;
-
-	bool IsFlashBangActive( void ) { return ( m_flFlashDuration > 0.0f ) && ( gpGlobals->curtime < m_flFlashBangTime ); }
-	float GetFlashStartTime( void ) { return (m_flFlashBangTime - m_flFlashDuration); }
-	float GetFlashTimeElapsed( void ) { return MAX( gpGlobals->curtime - GetFlashStartTime(), 0.0f ); }
-
-	bool IsBlinded( void ) { return (m_flFlashBangTime - 1.0f) > gpGlobals->curtime; }
+	float m_flFlashAlpha;
+	float m_flFlashBangTime;
 	CNetworkVar( float, m_flFlashMaxAlpha );
 	CNetworkVar( float, m_flFlashDuration );
 
@@ -407,8 +524,6 @@ public:
 	bool IsAbleToInstantRespawn( void );
 
 private:
-	void UpdateFlashBangEffect( void );
-
 	CountdownTimer m_ladderSurpressionTimer;
 	Vector m_lastLadderNormal;
 	Vector m_lastLadderPos;
@@ -419,10 +534,6 @@ private:
 	void CreateAddonModel( int i );
 	void UpdateAddonModels();
 	void UpdateHostageCarryModels();
-
-	void UpdateGlovesModel();
-	void RemoveGlovesModel();
-	CBaseCSGloves* m_pCSGloves;
 
 	void PushawayThink();
 
@@ -533,11 +644,10 @@ private:
 	int			m_nLastMagDropAttachmentIndex;
 
 public:
-	Vector m_vecLastAliveLocalVelocity;
+	Vector		m_vecLastAliveLocalVelocity;
 };
 
 C_CSPlayer* GetLocalOrInEyeCSPlayer( void );
-C_CSPlayer* GetHudPlayer( void );	// get the player we should show the HUD for (local or observed)
 
 inline C_CSPlayer *ToCSPlayer( CBaseEntity *pEntity )
 {

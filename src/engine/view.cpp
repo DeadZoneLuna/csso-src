@@ -454,10 +454,10 @@ public:
 		EngineVGui()->Paint( (PaintMode_t)mode );
 	}
 
-	void ViewDrawFade( byte *color, IMaterial* pFadeMaterial, bool mapFullTextureToScreen )
+	void ViewDrawFade( byte *color, IMaterial* pFadeMaterial )
 	{
 		VPROF_BUDGET( "ViewDrawFade", VPROF_BUDGETGROUP_WORLD_RENDERING );
-		g_EngineRenderer->ViewDrawFade( color, pFadeMaterial, mapFullTextureToScreen );
+		g_EngineRenderer->ViewDrawFade( color, pFadeMaterial );
 	}
 
 	void OLD_SetProjectionMatrix( float fov, float zNear, float zFar )

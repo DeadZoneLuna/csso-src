@@ -1150,7 +1150,7 @@ void ClientPrint( CBasePlayer *player, int msg_dest, const char *msg_name, const
 	UTIL_ClientPrintFilter( user, msg_dest, msg_name, param1, param2, param3, param4 );
 }
 
-void UTIL_SayTextFilter( IRecipientFilter& filter, const char *pText, CBasePlayer *pPlayer, EUtilSayTextMessageType_t eMessageType )
+void UTIL_SayTextFilter( IRecipientFilter& filter, const char *pText, CBasePlayer *pPlayer, bool bChat )
 {
 	UserMessageBegin( filter, "SayText" );
 		if ( pPlayer ) 
@@ -1162,11 +1162,11 @@ void UTIL_SayTextFilter( IRecipientFilter& filter, const char *pText, CBasePlaye
 			WRITE_BYTE( 0 ); // world, dedicated server says
 		}
 		WRITE_STRING( pText );
-		WRITE_BYTE( ( eMessageType == kEUtilSayTextMessageType_TeamonlyChat ) || ( eMessageType == kEUtilSayTextMessageType_AllChat ) );
+		WRITE_BYTE( bChat );
 	MessageEnd();
 }
 
-void UTIL_SayText2Filter( IRecipientFilter& filter, CBasePlayer *pEntity, EUtilSayTextMessageType_t eMessageType, const char *msg_name, const char *param1, const char *param2, const char *param3, const char *param4 )
+void UTIL_SayText2Filter( IRecipientFilter& filter, CBasePlayer *pEntity, bool bChat, const char *msg_name, const char *param1, const char *param2, const char *param3, const char *param4 )
 {
 	UserMessageBegin( filter, "SayText2" );
 		if ( pEntity )
@@ -1178,7 +1178,7 @@ void UTIL_SayText2Filter( IRecipientFilter& filter, CBasePlayer *pEntity, EUtilS
 			WRITE_BYTE( 0 ); // world, dedicated server says
 		}
 
-		WRITE_BYTE( ( eMessageType == kEUtilSayTextMessageType_TeamonlyChat ) || ( eMessageType == kEUtilSayTextMessageType_AllChat ) );
+		WRITE_BYTE( bChat );
 
 		WRITE_STRING( msg_name );
 
@@ -1213,13 +1213,13 @@ void UTIL_SayText( const char *pText, CBasePlayer *pToPlayer )
 	CSingleUserRecipientFilter user( pToPlayer );
 	user.MakeReliable();
 
-	UTIL_SayTextFilter( user, pText, pToPlayer, kEUtilSayTextMessageType_Default );
+	UTIL_SayTextFilter( user, pText, pToPlayer, false );
 }
 
-void UTIL_SayTextAll( const char *pText, CBasePlayer *pPlayer, EUtilSayTextMessageType_t eMessageType )
+void UTIL_SayTextAll( const char *pText, CBasePlayer *pPlayer, bool bChat )
 {
 	CReliableBroadcastRecipientFilter filter;
-	UTIL_SayTextFilter( filter, pText, pPlayer, eMessageType );
+	UTIL_SayTextFilter( filter, pText, pPlayer, bChat );
 }
 
 void UTIL_ShowMessage( const char *pString, CBasePlayer *pPlayer )
@@ -1551,18 +1551,18 @@ float UTIL_WaterLevel( const Vector &position, float minz, float maxz )
 	Vector midUp = position;
 	midUp.z = minz;
 
-	if ( !(UTIL_PointContents(midUp, MASK_WATER) & MASK_WATER) )
+	if ( !(UTIL_PointContents(midUp) & MASK_WATER) )
 		return minz;
 
 	midUp.z = maxz;
-	if ( UTIL_PointContents(midUp, MASK_WATER) & MASK_WATER )
+	if ( UTIL_PointContents(midUp) & MASK_WATER )
 		return maxz;
 
 	float diff = maxz - minz;
 	while (diff > 1.0)
 	{
 		midUp.z = minz + diff/2.0;
-		if ( UTIL_PointContents(midUp, MASK_WATER) & MASK_WATER )
+		if ( UTIL_PointContents(midUp) & MASK_WATER )
 		{
 			minz = midUp.z;
 		}

@@ -91,7 +91,7 @@ void CWeaponNova::PrimaryAttack()
 	if ( !pPlayer )
 		return;
 
-	float flCycleTime = GetCSWpnData().m_flCycleTime[m_weaponMode];
+	float flCycleTime = GetCSWpnData().m_flCycleTime;
 
 	// don't fire underwater
 	if (pPlayer->GetWaterLevel() == 3)
@@ -126,8 +126,8 @@ void CWeaponNova::PrimaryAttack()
 	float flCurAttack = CalculateNextAttackTime( flCycleTime );
 	FX_FireBullets( 
 		pPlayer->entindex(),
-		pPlayer->Weapon_ShootPosition(),
-		pPlayer->GetFinalAimAngle(),
+		pPlayer->Weapon_ShootPosition(), 
+		pPlayer->EyeAngles() + 2.0f * pPlayer->GetPunchAngle(), 
 		GetWeaponID(),
 		Primary_Mode,
 		CBaseEntity::GetPredictionRandomSeed() & 255, // wrap it for network traffic so it's the same between client and server
@@ -153,10 +153,19 @@ void CWeaponNova::PrimaryAttack()
 	// update accuracy
 	m_fAccuracyPenalty += GetCSWpnData().m_fInaccuracyImpulseFire[Primary_Mode];
 
-	// table driven recoil
-	Recoil( Primary_Mode );
+	// Update punch angles.
+	QAngle angle = pPlayer->GetPunchAngle();
 
-	m_flRecoilIndex += 1.0f;
+	if ( pPlayer->GetFlags() & FL_ONGROUND )
+	{
+		angle.x -= SharedRandomInt( "M3PunchAngleGround", 4, 6 );
+	}
+	else
+	{
+		angle.x -= SharedRandomInt( "M3PunchAngleAir", 8, 11 );
+	}
+
+	pPlayer->SetPunchAngle( angle );
 }
 
 

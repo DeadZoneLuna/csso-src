@@ -1218,7 +1218,6 @@ static void ParseLightGeneric( entity_t *e, directlight_t *dl )
 	Vector	        dest;
 
 	dl->light.style = (int)FloatForKey (e, "style");
-	dl->m_bSkyLightIsDirectionalLight = false;
 	
 	// get intenfsity
 	if( g_bHDR && LightForKey( e, "_lightHDR", dl->light.intensity ) ) 
@@ -1432,7 +1431,7 @@ bool CanLeafTraceToSky( int iLeaf )
 	return false;
 }
 
-void BuildVisForLightEnvironment( int nNumLights, directlight_t** pLights )
+void BuildVisForLightEnvironment( void )
 {
 	// Create the vis.
 	for ( int iLeaf = 0; iLeaf < numleafs; ++iLeaf )
@@ -1454,11 +1453,8 @@ void BuildVisForLightEnvironment( int nNumLights, directlight_t** pLights )
 				{
 					dleafs[iLeaf].flags |= LEAF_FLAGS_SKY;
 				}
-
-				for ( int iLight = 0; iLight < nNumLights; ++iLight )
-				{
-					MergeDLightVis( pLights[iLight], dleafs[iLeaf].cluster );
-				}
+				MergeDLightVis( gSkyLight, dleafs[iLeaf].cluster );
+				MergeDLightVis( gAmbient, dleafs[iLeaf].cluster );
 				break;
 			}
 		}
@@ -1581,7 +1577,6 @@ static void ParseLightEnvironment( entity_t* e, directlight_t* dl )
 		{
 			g_SunAngularExtent=atof(angle_str);
 			g_SunAngularExtent=sin((M_PI/180.0)*g_SunAngularExtent);
-			dl->m_flSkyLightSunAngularExtent = g_SunAngularExtent;
 			printf("sun extent from map=%f\n",g_SunAngularExtent);
 		}
 
@@ -1606,9 +1601,8 @@ static void ParseLightEnvironment( entity_t* e, directlight_t* dl )
 						 FloatForKeyWithDefault( e, "_AmbientScaleHDR", 1.0 ), 
 						 gAmbient->light.intensity );
 		}
-
-		directlight_t* lights[] = { gSkyLight, gAmbient };
-		BuildVisForLightEnvironment( 2, lights );
+		
+		BuildVisForLightEnvironment();
  
 		// Add sky and sky ambient lights to the list.
 		AddDLightToActiveList( gSkyLight );
@@ -1627,17 +1621,13 @@ static void ParseLightDirectional( entity_t* e, directlight_t* dl )
 	char *angle_str=ValueForKeyWithDefault( e, "SunSpreadAngle" );
 	if (angle_str)
 	{
-		dl->m_flSkyLightSunAngularExtent = atof(angle_str);
-		dl->m_flSkyLightSunAngularExtent = sin((M_PI/180.0)*dl->m_flSkyLightSunAngularExtent);
+		g_SunAngularExtent = atof(angle_str);
+		g_SunAngularExtent = sin((M_PI/180.0)*g_SunAngularExtent);
 	}
 
 	dl->light.type = emit_skylight;
-	// For the engine, emit_skylight is the type we want.
-	// Set an additional flag identifying this as "not the global skylight" for vrad. This will cause it to use the angular extent associated with this light
-	// instead of the global one.
-	dl->m_bSkyLightIsDirectionalLight = true;
 
-	BuildVisForLightEnvironment( 1, &dl );
+	BuildVisForLightEnvironment();
 }
 
 static void ParseLightPoint( entity_t* e, directlight_t* dl )
@@ -1802,13 +1792,8 @@ void GatherSampleSkyLightSSE( SSE_sampleLightOutput_t &out, directlight_t *dl, i
 {
 	bool bIgnoreNormals = ( nLFlags & GATHERLFLAGS_IGNORE_NORMALS ) != 0;
 	bool force_fast = ( nLFlags & GATHERLFLAGS_FORCE_FAST ) != 0;
-	fltx4 dot;
 
-	float fSunAngularExtent = g_SunAngularExtent;
-	if ( dl->m_bSkyLightIsDirectionalLight )
-	{
-		fSunAngularExtent = dl->m_flSkyLightSunAngularExtent;
-	}
+	fltx4 dot;
 
 	if ( bIgnoreNormals )
 		dot = ReplicateX4( CONSTANT_DOT );
@@ -1824,7 +1809,7 @@ void GatherSampleSkyLightSSE( SSE_sampleLightOutput_t &out, directlight_t *dl, i
 		return;
 
 	int nsamples = 1;
-	if ( fSunAngularExtent > 0.0f )
+	if ( g_SunAngularExtent > 0.0f )
 	{
 		nsamples = NSAMPLES_SUN_AREA_LIGHT;
 		if ( do_fast || force_fast )
@@ -1846,7 +1831,7 @@ void GatherSampleSkyLightSSE( SSE_sampleLightOutput_t &out, directlight_t *dl, i
 		{
 			// jitter light source location
 			Vector ofs = sampler.NextValue();
-			ofs *= MAX_TRACE_LENGTH * fSunAngularExtent;
+			ofs *= MAX_TRACE_LENGTH * g_SunAngularExtent;
 			delta += ofs;
 		}
 		FourVectors delta4;
@@ -2122,27 +2107,20 @@ void GatherSampleStandardLightSSE( SSE_sampleLightOutput_t &out, directlight_t *
 		out.m_flFalloff = MulSIMD( mult, out.m_flFalloff );
 	}
 
-	if ( !( nLFlags & GATHERLFLAGS_NO_OCCLUSION ) )
-	{
-		// Raytrace for visibility function
-		fltx4 fractionVisible = Four_Ones;
-		TestLine( pos, src, &fractionVisible, static_prop_index_to_ignore);
-		dot = MulSIMD( fractionVisible, dot );
-	}
-
+	// Raytrace for visibility function
+	fltx4 fractionVisible = Four_Ones;
+	TestLine( pos, src, &fractionVisible, static_prop_index_to_ignore);
+	dot = MulSIMD( fractionVisible, dot );
 	out.m_flDot[0] = dot;
+
 	for ( int i = 1; i < normalCount; i++ )
 	{
 		if ( bIgnoreNormals )
-		{
-			out.m_flDot[i] = ReplicateX4( (float)CONSTANT_DOT );
-			out.m_flSunAmount = Four_Zeros; 
-		}
+			out.m_flDot[i] = ReplicateX4( (float) CONSTANT_DOT );
 		else
 		{
 			out.m_flDot[i] = pNormals[i] * delta;
 			out.m_flDot[i] = MaxSIMD( Four_Zeros, out.m_flDot[i] );
-			out.m_flSunAmount = Four_Zeros; 
 		}
 	}
 }
@@ -2192,7 +2170,7 @@ void GatherSampleLightSSE( SSE_sampleLightOutput_t &out, directlight_t *dl, int 
 	bool bIgnoreNormals = (nLFlags & GATHERLFLAGS_IGNORE_NORMALS) != 0;
 	if ( !bIgnoreNormals ) // Don't calculate ambient occlusion for objects that ignore normals for gathering light
 	{
-		if ( nLFlags & GATHERLFLAGS_STATICPROP )
+		/*if ( nLFlags & GATHERLFLAGS_STATICPROP )
 		{
 			// for static props we want the sun amount for the basis normals to be mutliplied by the ao of the main vertex normal only.
 			// lightmaps using this path do not send basis normals here, we do so for static props to take advantage of the SIMD optimisation this path provides.
@@ -2200,7 +2178,7 @@ void GatherSampleLightSSE( SSE_sampleLightOutput_t &out, directlight_t *dl, int 
 			fltx4 ao0 = SplatXSIMD( ao );
 			ao = ao0;
 		}
-		else
+		else*/
 		{
 			ao = CalculateAmbientOcclusion4( pos, *pNormals, static_prop_index_to_ignore );
 		}

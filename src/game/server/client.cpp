@@ -56,7 +56,6 @@ extern CBaseEntity*	FindPickerEntity( CBasePlayer* pPlayer );
 extern bool IsInCommentaryMode( void );
 
 ConVar  *sv_cheats = NULL;
-static ConVar tv_relaytextchat( "tv_relaytextchat", "1", 0, "Relay text chat data: 0=off, 1=say, 2=say+say_team" );
 
 enum eAllowPointServerCommand {
 	eAllowNever,
@@ -277,38 +276,25 @@ void Host_Say( edict_t *pEdict, const CCommand &args, bool teamonly )
 		if ( !(client->IsNetClient()) )	// Not a client ? (should never be true)
 			continue;
 
-		if ( client->IsHLTV() )
-		{
-			if ( !tv_relaytextchat.GetInt() )
-				continue; // chat is not relayed to TV
-			else if ( teamonly && ( tv_relaytextchat.GetInt() < 2 ) )
-				continue; // team-only chat, in mode that TV doesn't relay
-		}
-		else
-		{
-			if ( pPlayer && !g_pGameRules->PlayerCanHearChat( client, pPlayer, teamonly ) )
-				continue;
+		if ( teamonly && g_pGameRules->PlayerCanHearChat( client, pPlayer ) != GR_TEAMMATE )
+			continue;
 
-			if ( pPlayer && !client->CanHearAndReadChatFrom( pPlayer ) )
-				continue;
+		if ( pPlayer && !client->CanHearAndReadChatFrom( pPlayer ) )
+			continue;
 
-			if ( pPlayer && GetVoiceGameMgr() && GetVoiceGameMgr()->IsPlayerIgnoringPlayer( pPlayer->entindex(), i ) )
-				continue;
-		}
+		if ( pPlayer && GetVoiceGameMgr() && GetVoiceGameMgr()->IsPlayerIgnoringPlayer( pPlayer->entindex(), i ) )
+			continue;
 
 		CSingleUserRecipientFilter user( client );
 		user.MakeReliable();
 
 		if ( pszFormat )
 		{
-			UTIL_SayText2Filter( user, pPlayer,
-				teamonly ? kEUtilSayTextMessageType_TeamonlyChat : kEUtilSayTextMessageType_AllChat,
-				pszFormat, pszPlayerName, p, pszLocation );
+			UTIL_SayText2Filter( user, pPlayer, true, pszFormat, pszPlayerName, p, pszLocation );
 		}
 		else
 		{
-			UTIL_SayTextFilter( user, text, pPlayer,
-				teamonly ? kEUtilSayTextMessageType_TeamonlyChat : kEUtilSayTextMessageType_AllChat );
+			UTIL_SayTextFilter( user, text, pPlayer, true );
 		}
 	}
 
@@ -320,14 +306,11 @@ void Host_Say( edict_t *pEdict, const CCommand &args, bool teamonly )
 
 		if ( pszFormat )
 		{
-			UTIL_SayText2Filter( user, pPlayer,
-				teamonly ? kEUtilSayTextMessageType_TeamonlyChat : kEUtilSayTextMessageType_AllChat,
-				pszFormat, pszPlayerName, p, pszLocation );
+			UTIL_SayText2Filter( user, pPlayer, true, pszFormat, pszPlayerName, p, pszLocation );
 		}
 		else
 		{
-			UTIL_SayTextFilter( user, text, pPlayer,
-				teamonly ? kEUtilSayTextMessageType_TeamonlyChat : kEUtilSayTextMessageType_AllChat );
+			UTIL_SayTextFilter( user, text, pPlayer, true );
 		}
 	}
 
@@ -404,40 +387,6 @@ void ClientPrecache( void )
 	CBaseEntity::PrecacheScriptSound( "Bounce.ShotgunShell" );
 	CBaseEntity::PrecacheScriptSound( "Bounce.Shell" );
 	CBaseEntity::PrecacheScriptSound( "Bounce.Concrete" );
-
-#ifdef CSTRIKE_DLL
-	// nav_edit
-	CBaseEntity::PrecacheModel( "Bot.EditSwitchOn" );
-	CBaseEntity::PrecacheModel( "EDIT_TOGGLE_PLACE_MODE" );
-	CBaseEntity::PrecacheModel( "Bot.EditSwitchOff" );
-	CBaseEntity::PrecacheModel( "EDIT_PLACE_PICK" );
-	CBaseEntity::PrecacheModel( "EDIT_DELETE" );
-	CBaseEntity::PrecacheModel( "EDIT.ToggleAttribute" );
-	CBaseEntity::PrecacheModel( "EDIT_SPLIT.MarkedArea" );
-	CBaseEntity::PrecacheModel( "EDIT_SPLIT.NoMarkedArea" );
-	CBaseEntity::PrecacheModel( "EDIT_MERGE.Enable" );
-	CBaseEntity::PrecacheModel( "EDIT_MERGE.Disable" );
-	CBaseEntity::PrecacheModel( "EDIT_MARK.Enable" );
-	CBaseEntity::PrecacheModel( "EDIT_MARK.Disable" );
-	CBaseEntity::PrecacheModel( "EDIT_MARK_UNNAMED.Enable" );
-	CBaseEntity::PrecacheModel( "EDIT_MARK_UNNAMED.NoMarkedArea" );
-	CBaseEntity::PrecacheModel( "EDIT_MARK_UNNAMED.MarkedArea" );
-	CBaseEntity::PrecacheModel( "EDIT_CONNECT.AllDirections" );
-	CBaseEntity::PrecacheModel( "EDIT_CONNECT.Added" );
-	CBaseEntity::PrecacheModel( "EDIT_DISCONNECT.MarkedArea" );
-	CBaseEntity::PrecacheModel( "EDIT_DISCONNECT.NoMarkedArea" );
-	CBaseEntity::PrecacheModel( "EDIT_SPLICE.MarkedArea" );
-	CBaseEntity::PrecacheModel( "EDIT_SPLICE.NoMarkedArea" );
-	CBaseEntity::PrecacheModel( "EDIT_SELECT_CORNER.MarkedArea" );
-	CBaseEntity::PrecacheModel( "EDIT_SELECT_CORNER.NoMarkedArea" );
-	CBaseEntity::PrecacheModel( "EDIT_MOVE_CORNER.MarkedArea" );
-	CBaseEntity::PrecacheModel( "EDIT_MOVE_CORNER.NoMarkedArea" );
-	CBaseEntity::PrecacheModel( "EDIT_BEGIN_AREA.Creating" );
-	CBaseEntity::PrecacheModel( "EDIT_BEGIN_AREA.NotCreating" );
-	CBaseEntity::PrecacheModel( "EDIT_END_AREA.Creating" );
-	CBaseEntity::PrecacheModel( "EDIT_END_AREA.NotCreating" );
-	CBaseEntity::PrecacheModel( "EDIT_WARP_TO_MARK" );
-#endif
 
 	ClientGamePrecache();
 }

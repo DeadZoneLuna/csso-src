@@ -177,7 +177,7 @@ public:
 	void					UpdateAllViewmodelAddons( void );
 
 #if defined ( CLIENT_DLL )
-	C_ViewmodelAttachmentModel *AddViewmodelArmModel( const char *pszModel, int nSkintoneIndex = -1, bool bHideBareArms = false );
+	C_ViewmodelAttachmentModel *AddViewmodelArmModel( const char *pszModel, int nSkintoneIndex = -1 );
 	void					RemoveViewmodelArmModels( void );
 #endif
 	

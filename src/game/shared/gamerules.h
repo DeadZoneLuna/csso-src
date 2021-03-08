@@ -110,8 +110,11 @@ private:
 	static CGameRulesProxy *s_pGameRulesProxy;
 };
 
-
+#ifndef DEBUG
+abstract_class CGameRules : public CMemZeroOnNew, public CAutoGameSystemPerFrame
+#else
 abstract_class CGameRules : public CAutoGameSystemPerFrame
+#endif
 {
 public:
 	DECLARE_CLASS_GAMEROOT( CGameRules, CAutoGameSystemPerFrame );
@@ -351,7 +354,7 @@ public:
 // Teamplay stuff
 	virtual const char *GetTeamID( CBaseEntity *pEntity ) = 0;// what team is this entity on?
 	virtual int PlayerRelationship( CBaseEntity *pPlayer, CBaseEntity *pTarget ) = 0;// What is the player's relationship with this entity?
-	virtual bool PlayerCanHearChat( CBasePlayer *pListener, CBasePlayer *pSpeaker, bool bTeamOnly ) = 0;
+	virtual bool PlayerCanHearChat( CBasePlayer *pListener, CBasePlayer *pSpeaker ) = 0;
 	virtual void CheckChatText( CBasePlayer *pPlayer, char *pText ) { return; }
 
 	virtual int GetTeamIndex( const char *pTeamName ) { return -1; }

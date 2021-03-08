@@ -163,23 +163,6 @@ int GetSpectatorTarget( void )
 	}
 }
 
-bool CanSeeSpectatorOnlyTools( void )
-{
-	C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
-	if ( !pPlayer )
-		return false;
-
-	if ( pPlayer->IsHLTV() )
-		return true;
-
-	if ( pPlayer->GetTeamNumber() == TEAM_SPECTATOR )
-	{
-		return true;
-	}
-		
-	return false;
-}
-
 int GetLocalPlayerTeam( void ) 
 { 
 	C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
@@ -310,18 +293,18 @@ float UTIL_WaterLevel( const Vector &position, float minz, float maxz )
 	Vector midUp = position;
 	midUp.z = minz;
 
-	if ( !(UTIL_PointContents(midUp, MASK_WATER) & MASK_WATER) )
+	if ( !(UTIL_PointContents(midUp) & MASK_WATER) )
 		return minz;
 
 	midUp.z = maxz;
-	if ( UTIL_PointContents(midUp, MASK_WATER) & MASK_WATER )
+	if ( UTIL_PointContents(midUp) & MASK_WATER )
 		return maxz;
 
 	float diff = maxz - minz;
 	while (diff > 1.0)
 	{
 		midUp.z = minz + diff/2.0;
-		if ( UTIL_PointContents(midUp, MASK_WATER) & MASK_WATER )
+		if ( UTIL_PointContents(midUp) & MASK_WATER )
 		{
 			minz = midUp.z;
 		}

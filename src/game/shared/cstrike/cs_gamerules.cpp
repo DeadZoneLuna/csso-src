@@ -13,7 +13,6 @@
 #include "KeyValues.h"
 #include "cs_achievement_constants.h"
 #include "fmtstr.h"
-#include "molotov_projectile.h"
 
 #ifdef CLIENT_DLL
 
@@ -210,8 +209,6 @@ ConVar cs_AssistDamageThreshold( "cs_AssistDamageThreshold", "40.0", FCVAR_DEVEL
 
 
 extern ConVar sv_stopspeed;
-extern ConVar mp_randomspawn;
-extern ConVar mp_randomspawn_los;
 extern ConVar mp_hostages_max;
 extern ConVar mp_hostages_spawn_farthest;
 extern ConVar mp_hostages_spawn_force_positions;
@@ -392,23 +389,6 @@ ConVar sv_kick_ban_duration(
 	"15",
 	FCVAR_REPLICATED | FCVAR_NOTIFY,
 	"How long should a kick ban from the server should last (in minutes)" );
-
-// Set game rules to allow all clients to talk to each other.
-// Muted players still can't talk to each other.
-ConVar sv_alltalk( "sv_alltalk", "0", FCVAR_REPLICATED | FCVAR_NOTIFY, "Deprecated. Replaced with sv_talk_enemy_dead and sv_talk_enemy_living." );
-
-// [jason] Can the dead speak to the living?
-ConVar sv_deadtalk( "sv_deadtalk", "0",	FCVAR_REPLICATED | FCVAR_NOTIFY, "Dead players can speak (voice, text) to the living" );
-
-// [jason] Override that removes all chat restrictions, including those for spectators
-ConVar sv_full_alltalk( "sv_full_alltalk", "0", FCVAR_REPLICATED, "Any player (including Spectator team) can speak to any other player" );
-
-ConVar sv_talk_enemy_dead( "sv_talk_enemy_dead", "0", FCVAR_REPLICATED, "Dead players can hear all dead enemy communication (voice, chat)" );
-ConVar sv_talk_enemy_living( "sv_talk_enemy_living", "0", FCVAR_REPLICATED, "Living players can hear all living enemy communication (voice, chat)" );
-
-ConVar sv_spec_hear( "sv_spec_hear", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "Determines who spectators can hear: 0: only spectators; 1: all players; 2: spectated team; 3: self only; 4: nobody" );
-
-ConVar mp_c4timer( "mp_c4timer", "40", FCVAR_REPLICATED | FCVAR_NOTIFY, "how long from when the C4 is armed until it blows", true, 10, true, 90	);
 
 #ifdef CLIENT_DLL
 
@@ -602,14 +582,17 @@ ConVar snd_music_selection(
 	public:
 		virtual bool		CanPlayerHearPlayer( CBasePlayer *pListener, CBasePlayer *pTalker, bool &bProximity )
 		{
-            if ( pListener == NULL || pTalker == NULL )
-                return false;
+			// Dead players can only be heard by other dead team mates
+			if ( pTalker->IsAlive() == false )
+			{
+				if ( pListener->IsAlive() == false )
+					return ( pListener->InSameTeam( pTalker ) );
 
-            if ( !CSGameRules() )
-                return false;
+				return false;
+			}
 
-            return CSGameRules()->CanPlayerHearTalker( pListener, pTalker, false );
-        }
+			return ( pListener->InSameTeam( pTalker ) );
+		}
 	};
 	CVoiceGameMgrHelper g_VoiceGameMgrHelper;
 	IVoiceGameMgrHelper *g_pVoiceGameMgrHelper = &g_VoiceGameMgrHelper;
@@ -663,6 +646,15 @@ ConVar snd_music_selection(
 		"how many seconds to keep players frozen when the round starts",
 		true, 0,	// min value
 		true, 60	// max value
+		);
+
+	ConVar mp_c4timer( 
+		"mp_c4timer", 
+		"40", 
+		FCVAR_REPLICATED | FCVAR_NOTIFY,
+		"how long from when the C4 is armed until it blows",
+		true, 10,	// min value
+		true, 90	// max value
 		);
 
 	ConVar mp_limitteams( 
@@ -832,18 +824,6 @@ ConVar snd_music_selection(
 		"cash_player_killed_hostage",
 		"-1000",
 		FCVAR_REPLICATED | FCVAR_NOTIFY );
-
-	namespace SpecHear
-	{
-		enum Type
-		{
-			OnlySpectators = 0,
-			AllPlayers = 1,
-			SpectatedTeam = 2,
-			Self = 3,
-			Nobody = 4,
-		};
-	}
 
 
 	// --------------------------------------------------------------------------------------------------- //
@@ -1554,24 +1534,43 @@ ConVar snd_music_selection(
 			falloff = info.GetDamage() / flRadius;
 		else
 			falloff = 1.0;
+
+		int bInWater = (UTIL_PointContents ( vecSrc ) & MASK_WATER) ? true : false;
 		
 		vecSrc.z += 1;// in case grenade is lying on the ground
 
 		// iterate on all entities in the vicinity.
 		for ( CEntitySphereQuery sphere( vecSrc, flRadius ); ( pEntity = sphere.GetCurrentEntity() ) != NULL; sphere.NextEntity() )
 		{
+			//=============================================================================
+			// HPE_BEGIN:
+			// [tj] We have to save whether or not the player is killed so we don't give credit 
+			//		for pre-dead players.
+			//=============================================================================
 			bool wasAliveBeforeExplosion = false;
 			CCSPlayer* pCSExplosionVictim = ToCSPlayer(pEntity);
 			if (pCSExplosionVictim)
 			{
 				wasAliveBeforeExplosion = pCSExplosionVictim->IsAlive();
 			}
+			//=============================================================================
+			// HPE_END
+			//=============================================================================
 			if ( pEntity->m_takedamage != DAMAGE_NO )
 			{
 				// UNDONE: this should check a damage mask, not an ignore
 				if ( iClassIgnore != CLASS_NONE && pEntity->Classify() == iClassIgnore )
 				{// houndeyes don't hurt other houndeyes with their attack
 					continue;
+				}
+
+				// blasts don't travel into or out of water
+				if ( !bIgnoreWorld )
+				{
+					if (bInWater && pEntity->GetWaterLevel() == 0)
+						continue;
+					if (!bInWater && pEntity->GetWaterLevel() == 3)
+						continue;
 				}
 
 				// radius damage can only be blocked by the world
@@ -1858,22 +1857,6 @@ ConVar snd_music_selection(
 		else if( strncmp( killer_weapon_name, "flashbang", 9 ) == 0 )	//"flashbang_projectile"
 		{
 			killer_weapon_name = "flashbang";
-		}
-		else if( strncmp( killer_weapon_name, "decoy", 5 ) == 0 )	//"decoy_projectile"
-		{
-			killer_weapon_name = "decoy";
-		}
-		else if( strncmp( killer_weapon_name, "smokegrenade", 5 ) == 0 )	//"smokegrenade_projectile"
-		{
-			killer_weapon_name = "smokegrenade";
-		}
-		else if( strncmp( killer_weapon_name, "molotov", 5 ) == 0 )	//"molotov_projectile"
-		{
-			killer_weapon_name = "molotov";
-
-			CMolotovProjectile *pMolotovProjectile = dynamic_cast<CMolotovProjectile*>(pInflictor);
-			if ( pMolotovProjectile && pMolotovProjectile->IsIncGrenade() )
-				killer_weapon_name = "incgrenade";
 		}
 
 		IGameEvent * event = gameeventmanager->CreateEvent( "player_death" );
@@ -3638,7 +3621,7 @@ ConVar snd_music_selection(
 			GiveC4();
 
 		// Reset game variables
-        m_flIntermissionStartTime = 0;
+		m_flIntermissionEndTime = 0;
 		m_flRestartRoundTime = 0.0;
 		m_iHostagesRescued = 0;
 		m_iHostagesTouched = 0;
@@ -4033,16 +4016,22 @@ ConVar snd_music_selection(
 	{
 		if ( g_fGameOver )   // someone else quit the game already
 		{
+			//=============================================================================
+			// HPE_BEGIN:
 			// [Forrest] Calling ChangeLevel multiple times was causing IncrementMapCycleIndex
 			// to skip over maps in the list.  Avoid this using a technique from CTeamplayRoundBasedRules::Think.
+			//=============================================================================
 			// check to see if we should change levels now
-			if ( m_flIntermissionStartTime && ( m_flIntermissionStartTime + GetIntermissionDuration() < gpGlobals->curtime ) )
+			if ( m_flIntermissionEndTime && ( m_flIntermissionEndTime < gpGlobals->curtime ) )
 			{
 				ChangeLevel(); // intermission is over
 
-                // Don't run this code again
-                m_flIntermissionStartTime = 0.f;
+				// Don't run this code again
+				m_flIntermissionEndTime = 0.f;
 			}
+			//=============================================================================
+			// HPE_END
+			//=============================================================================
 
 			return true;
 		}
@@ -4334,17 +4323,8 @@ ConVar snd_music_selection(
 
 		BaseClass::GoToIntermission();
 
-		//Clear various states from all players and freeze them in place
-		for ( int i = 1; i <= MAX_PLAYERS; i++ )
-		{
-			CCSPlayer *pPlayer = ToCSPlayer( UTIL_PlayerByIndex( i ) );
-
-			if ( pPlayer )
-			{
-				pPlayer->Unblind();
-				pPlayer->AddFlag( FL_FROZEN );
-			}
-		}
+		// set all players to FL_FROZEN
+		FreezePlayers();
 
 		// freeze players while in intermission
 		m_bFreezePeriod = true;
@@ -4513,8 +4493,7 @@ ConVar snd_music_selection(
 		PrintToConsole( player, str.sprintf( "m_iRoundWinStatus: %d\n", m_iRoundWinStatus ) );
 
 		PrintToConsole( player, str.sprintf( "first connected: %d\n", m_bFirstConnected ) );
-        PrintToConsole( player, str.sprintf( "intermission start time: %f\n", m_flIntermissionStartTime ) );
-		PrintToConsole( player, str.sprintf( "intermission duration: %f\n", GetIntermissionDuration() ) );
+		PrintToConsole( player, str.sprintf( "intermission end time: %f\n", m_flIntermissionEndTime ) );
 		PrintToConsole( player, str.sprintf( "freeze period: %d\n", m_bFreezePeriod.Get() ) );
 		PrintToConsole( player, str.sprintf( "round restart time: %f\n", m_flRestartRoundTime ) );
 		PrintToConsole( player, str.sprintf( "game start time: %f\n", m_flGameStartTime.Get() ) );
@@ -4909,35 +4888,22 @@ ConVar snd_music_selection(
 		}
 	}
 
-    
-    // the following two functions cap the number of players on a team to five instead of basing it on the number of spawn points
-    int CCSGameRules::MaxNumPlayersOnTerrTeam()
-    {
-		bool bRandomTSpawn = mp_randomspawn.GetInt() == 1 || mp_randomspawn.GetInt() == TEAM_TERRORIST;
-        return bRandomTSpawn ? MAX_PLAYERS : m_iSpawnPointCount_Terrorist;
-    }
-
-    int CCSGameRules::MaxNumPlayersOnCTTeam()
-    {
-		bool bRandomCTSpawn = mp_randomspawn.GetInt() == 1 || mp_randomspawn.GetInt() == TEAM_CT;
-        return bRandomCTSpawn ? MAX_PLAYERS : m_iSpawnPointCount_CT;
-    }
 
 	bool CCSGameRules::TeamFull( int team_id )
 	{
-        CheckLevelInitialized();
+		CheckLevelInitialized();
 
-        switch ( team_id )
-        {
-        case TEAM_TERRORIST:
-            return m_iNumTerrorist >= MaxNumPlayersOnTerrTeam();
+		switch ( team_id )
+		{
+		case TEAM_TERRORIST:
+			return m_iNumTerrorist >= m_iSpawnPointCount_Terrorist;
 
-        case TEAM_CT:
-            return m_iNumCT >= MaxNumPlayersOnCTTeam();
-        }
+		case TEAM_CT:
+			return m_iNumCT >= m_iSpawnPointCount_CT;
+		}
 
-        return false;
-    }
+		return false;
+	}
 	
 	int CCSGameRules::GetHumanTeam()
 	{
@@ -5251,16 +5217,6 @@ ConVar snd_music_selection(
 			Assert( iWinnerTeam == WINNER_NONE || iWinnerTeam == WINNER_DRAW );
 		}
 
-        for ( int i = 1; i <= gpGlobals->maxClients; i++ )
-        {
-            CCSPlayer* pPlayer = (CCSPlayer*)UTIL_PlayerByIndex( i );
-            if (pPlayer)
-            {
-                // have all players do any end of round bookkeeping
-                pPlayer->HandleEndOfRound();
-            }
-        }
-
 		//=============================================================================
 		// HPE_BEGIN:		
 		//=============================================================================
@@ -5279,7 +5235,7 @@ ConVar snd_music_selection(
 			funfact.iData2 = 0;
 			funfact.iData3 = 0;
 
-			m_pFunFactManager->GetRoundEndFunFact( iWinnerTeam, (e_RoundEndReason)iReason, funfact);
+			m_pFunFactManager->GetRoundEndFunFact( iWinnerTeam, iReason, funfact);
 
 			//Send all the info needed for the win panel
 			IGameEvent *winEvent = gameeventmanager->CreateEvent( "cs_win_panel_round" );
@@ -5784,7 +5740,7 @@ ConVar snd_music_selection(
 
 		// Move the player to the place it said.
 		pPlayer->Teleport( &pSpawnSpot->GetAbsOrigin(), &pSpawnSpot->GetLocalAngles(), &vec3_origin );
-		pPlayer->m_Local.m_viewPunchAngle = vec3_angle;
+		pPlayer->m_Local.m_vecPunchAngle = vec3_angle;
 		
 		return pSpawnSpot;
 	}
@@ -6186,9 +6142,6 @@ void CCSGameRules::EndWarmup( void )
 }
 #endif
 
-ConVar mp_randomspawn("mp_randomspawn", "0", FCVAR_REPLICATED, "Determines whether players are to spawn. 0 = default; 1 = both teams; 2 = Terrorists; 3 = CTs." );
-ConVar mp_randomspawn_los("mp_randomspawn_los", "1", FCVAR_REPLICATED, "If using mp_randomspawn, determines whether to test Line of Sight when spawning." );
-ConVar mp_randomspawn_dist( "mp_randomspawn_dist", "0", FCVAR_REPLICATED, "If using mp_randomspawn, determines whether to test distance when selecting this spot." );
 
 bool CCSGameRules::IsVIPMap() const
 {
@@ -6256,95 +6209,6 @@ const CViewVectors* CCSGameRules::GetViewVectors() const
 	return &g_CSViewVectors;
 }
 
-#ifdef GAME_DLL
-/*
-	Helper function which handles both voice and chat. The only difference is which convar to use
-	to determine whether enemies can be heard (sv_alltalk or sv_allchat).
-*/
-bool CanPlayerHear( CBasePlayer* pListener, CBasePlayer *pSpeaker, bool bTeamOnly, bool bHearEnemies )
-{
-	Assert(pListener != NULL && pSpeaker != NULL);
-	if ( pListener == NULL || pSpeaker == NULL )
-		return false;
-
-	// sv_full_alltalk lets everyone can talk to everyone else, except comms specifically flagged as team-only
-	if ( !bTeamOnly && sv_full_alltalk.GetBool() )
-		return true;
-
-	// if either speaker or listener are coaching then for intents and purposes treat them as teammates.
-	int iListenerTeam = pListener->GetTeamNumber();
-	int iSpeakerTeam = pSpeaker->GetTeamNumber();
-
-	// use the observed target's team when sv_spec_hear is mode 2
-	if ( iListenerTeam == TEAM_SPECTATOR && sv_spec_hear.GetInt() == SpecHear::SpectatedTeam && 
-		( pListener->GetObserverMode() == OBS_MODE_IN_EYE || pListener->GetObserverMode() == OBS_MODE_CHASE ) )
-	{
-		CBaseEntity *pTarget = pListener->GetObserverTarget();
-		if ( pTarget && pTarget->IsPlayer() )
-		{
-			iListenerTeam = pTarget->GetTeamNumber();
-		}
-	}
-
-	if ( iListenerTeam == TEAM_SPECTATOR )
-	{
-		if ( sv_spec_hear.GetInt() == SpecHear::Nobody )
-			return false; // spectators are selected to not hear other spectators
-
-		if ( sv_spec_hear.GetInt() == SpecHear::Self )
-			return ( pListener == pSpeaker ); // spectators are selected to not hear other spectators
-
-		// spectators can always hear other spectators
-		if ( iSpeakerTeam == TEAM_SPECTATOR )
-			return true;
-
-		return !bTeamOnly && sv_spec_hear.GetInt() == SpecHear::AllPlayers;
-	}
-
-	// no one else can hear spectators
-	if ( ( iSpeakerTeam != TEAM_TERRORIST ) &&
-		( iSpeakerTeam != TEAM_CT ) )
-		return false;
-
-	// are enemy teams prevented from hearing each other by sv_alltalk/sv_allchat?
-	if ( (bTeamOnly || !bHearEnemies) && iSpeakerTeam != iListenerTeam )
-		return false;
-
-	// living players can only hear dead players if sv_deadtalk is enabled
-	if ( pListener->IsAlive() && !pSpeaker->IsAlive() )
-	{
-		return sv_deadtalk.GetBool();
-	}
-
-	return true;
-}
-
-bool CCSGameRules::CanPlayerHearTalker( CBasePlayer* pListener, CBasePlayer *pSpeaker, bool bTeamOnly  )
-{
-	bool bHearEnemy = false;
-	
-	if ( sv_talk_enemy_living.GetBool() && sv_talk_enemy_dead.GetBool() )
-	{
-		bHearEnemy = true;
-	}
-	else if ( !pListener->IsAlive() && !pSpeaker->IsAlive() )
-	{
-		bHearEnemy = sv_talk_enemy_dead.GetBool();
-	}
-	else if ( pListener->IsAlive() && pSpeaker->IsAlive() )
-	{
-		bHearEnemy = sv_talk_enemy_living.GetBool();
-	}
-
-	return CanPlayerHear( pListener, pSpeaker, bTeamOnly, bHearEnemy );
-}
-
-extern ConVar sv_allchat;
-bool CCSGameRules::PlayerCanHearChat( CBasePlayer *pListener, CBasePlayer *pSpeaker, bool bTeamOnly  )
-{
-	return CanPlayerHear( pListener, pSpeaker, bTeamOnly, sv_allchat.GetBool() );
-}
-#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: Init CS ammo definitions
@@ -6600,6 +6464,7 @@ void CCSGameRules::ClientSettingsChanged( CBasePlayer *pPlayer )
 
 	int m_iNewAgentCT = atoi( engine->GetClientConVarValue( engine->IndexOfEdict( pCSPlayer->edict() ), "loadout_slot_agent_ct" ) );
 	int m_iNewAgentT = atoi( engine->GetClientConVarValue( engine->IndexOfEdict( pCSPlayer->edict() ), "loadout_slot_agent_t" ) );
+
 	// change the agent in the next round if needed
 	if ( ( m_iNewAgentCT != pCSPlayer->m_iLoadoutSlotAgentCT ) || ( m_iNewAgentT != pCSPlayer->m_iLoadoutSlotAgentT ) )
 	{
@@ -6893,11 +6758,6 @@ bool CCSGameRules::IsPlayingAnyCompetitiveStrictRuleset( void ) const
 	return (m_iCurrentGamemode == GameModes::COMPETITIVE) || (m_iCurrentGamemode == GameModes::COMPETITIVE_2V2); // TODO: check if 2v2 actually belongs here
 }
 
-bool CCSGameRules::IsPlayingClassic( void ) const
-{
-	return true; // PTODO: add some if's here after adding gamemodes
-}
-
 
 
 //=============================================================================
@@ -7178,15 +7038,6 @@ float CCSGameRules::CheckTotalSmokedLength( float flSmokeRadiusSq, Vector vecGre
 	}
 	
 	return 0;
-}
-
-bool CCSGameRules::IsIntermission( void ) const
-{
-#ifndef CLIENT_DLL
-    return m_flIntermissionStartTime + GetIntermissionDuration() > gpGlobals->curtime;
-#endif
-
-    return false;
 }
 
 #ifdef CLIENT_DLL

@@ -315,7 +315,6 @@ MDLViewer::MDLViewer ()
 	menuOptions->add ("Ground Color...", IDC_OPTIONS_COLORGROUND);
 	menuOptions->add ("Light Color...", IDC_OPTIONS_COLORLIGHT);
 	menuOptions->add ("Ambient Color...", IDC_OPTIONS_COLORAMBIENT);
-	menuOptions->add ("Secondary Lights", IDC_OPTIONS_SECONDARYLIGHTS );
 	menuOptions->add ("Reset Lighting", IDC_OPTIONS_RESETLIGHTING);
 	menuOptions->addSeparator ();
 	menuOptions->add ("Center View", IDC_OPTIONS_CENTERVIEW);
@@ -370,6 +369,10 @@ MDLViewer::MDLViewer ()
 	g_viewerSettings.ypos  = max( 0, g_viewerSettings.ypos );
 	g_viewerSettings.width = max( 640, g_viewerSettings.width );
 	g_viewerSettings.height = max( 700, g_viewerSettings.height );
+	
+	menuView->setChecked( IDC_VIEW_ACTIVITIES, g_viewerSettings.showActivities );
+	menuView->setChecked( IDC_VIEW_HIDDEN, g_viewerSettings.showHidden );
+	menuView->setChecked( IDC_VIEW_SORT_SEQUENCES, g_viewerSettings.sortSequences );
 
 	menuView->setChecked( IDC_VIEW_ACTIVITIES, g_viewerSettings.showActivities );
 	menuView->setChecked( IDC_VIEW_HIDDEN, g_viewerSettings.showHidden );
@@ -818,11 +821,6 @@ MDLViewer::handleEvent (mxEvent *event)
 			g_viewerSettings.lightrot[2] = 0.0f;
 		}
 		break;
-
-		case IDC_OPTIONS_SECONDARYLIGHTS:
-			g_viewerSettings.secondaryLights = !g_viewerSettings.secondaryLights;
-			menuOptions->setChecked( IDC_OPTIONS_SECONDARYLIGHTS, g_viewerSettings.secondaryLights );
-			break;
 
 		case IDC_OPTIONS_CENTERVIEW:
 			d_cpl->centerView ();

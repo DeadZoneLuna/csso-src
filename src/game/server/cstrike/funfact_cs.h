@@ -3,8 +3,7 @@
 #define INCLUDED_funfact_cs
 #pragma once
 
-#include "cs_shareddefs.h"
-
+#include "cs_player.h"
 
 struct FunFact
 {
@@ -44,7 +43,7 @@ public:
 	const char* GetLocalizationToken() const { return m_pLocalizationToken; }
 	float GetCoolness() const { return m_fCoolness; }
 
-	virtual bool Evaluate( e_RoundEndReason iRoundResult, FunFactVector& results ) const = 0;
+	virtual bool Evaluate( FunFactVector& results ) const = 0;
 
 private:
 	int  m_id;
