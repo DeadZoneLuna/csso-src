@@ -190,7 +190,7 @@ public:
 // Teamplay stuff	
 	virtual const char *GetTeamID( CBaseEntity *pEntity ) {return "";}
 	virtual int PlayerRelationship( CBaseEntity *pPlayer, CBaseEntity *pTarget );
-	virtual bool PlayerCanHearChat( CBasePlayer *pListener, CBasePlayer *pSpeaker );
+	virtual bool PlayerCanHearChat( CBasePlayer *pListener, CBasePlayer *pSpeaker, bool bTeamOnly );
 
 	virtual bool PlayTextureSounds( void ) { return FALSE; }
 	virtual bool PlayFootstepSounds( CBasePlayer *pl );
@@ -220,6 +220,8 @@ public:
 	virtual void GetTaggedConVarList( KeyValues *pCvarTagList );
 
 	void SkipNextMapInCycle();
+
+	virtual float GetIntermissionStartTime() const { return m_flIntermissionStartTime; };
 
 	virtual void	ClientCommandKeyValues( edict_t *pEntity, KeyValues *pKeyValues );
 
@@ -258,10 +260,11 @@ public:
 
 protected:
 	virtual void GoToIntermission( void );
+	float GetIntermissionDuration() const;
+	float m_flIntermissionStartTime;
 	virtual void LoadMapCycleFile( void );
 	void ChangeLevelToMap( const char *pszMap );
 
-	float m_flIntermissionEndTime;
 	static int m_nMapCycleTimeStamp;
 	static int m_nMapCycleindex;
 	static CUtlVector<char*> m_MapList;

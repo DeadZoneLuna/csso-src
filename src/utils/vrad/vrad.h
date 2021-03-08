@@ -81,6 +81,11 @@ struct directlight_t
 	float	soffset;
 	float	toffset;
 
+	// Flag indicating that even though light.type is emit_skylight, treat this light as a
+	// directional light source in vrad
+	bool	m_bSkyLightIsDirectionalLight;
+	float	m_flSkyLightSunAngularExtent;
+
 	int		dorecalc; // position, vector, spot angle, etc.
 	IncrementalLightID	m_IncrementalID;
 
@@ -93,6 +98,8 @@ struct directlight_t
 
 	directlight_t(void)
 	{
+		m_bSkyLightIsDirectionalLight = false;
+		m_flSkyLightSunAngularExtent = 0.0f;
 		m_flEndFadeDistance = -1.0;							// end<start indicates not set
 		m_flStartFadeDistance= 0.0;
 		m_flCapDist = 1.0e22;
@@ -452,8 +459,10 @@ struct SSE_sampleLightOutput_t
 	fltx4 m_flSunAmount;
 };
 
-#define GATHERLFLAGS_FORCE_FAST 1
-#define GATHERLFLAGS_IGNORE_NORMALS 2
+#define GATHERLFLAGS_FORCE_FAST     1	/* Use 4x fewer rays when sampling area lights */
+#define GATHERLFLAGS_IGNORE_NORMALS 2	/* Ignore surface normals in lighting calculations */
+#define GATHERLFLAGS_NO_OCCLUSION   4	/* Ignore occlusion for local lights (but not sun, sky or bounce lighting) */
+#define GATHERLFLAGS_STATICPROP		8	/* Paths for static props */
 
 // SSE Gather light stuff
 void GatherSampleLightSSE( SSE_sampleLightOutput_t &out, directlight_t *dl, int facenum, 

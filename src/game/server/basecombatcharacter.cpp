@@ -722,7 +722,6 @@ CBaseCombatCharacter::CBaseCombatCharacter( void )
 
 	// Init weapon and Ammo data
 	m_hActiveWeapon			= NULL;
-	m_uiLastDamageTypeFlags = 0;
 
 	// reset all ammo values to 0
 	RemoveAllAmmo();
@@ -1945,8 +1944,8 @@ void CBaseCombatCharacter::Weapon_Drop( CBaseCombatWeapon *pWeapon, const Vector
 	if ( IsPlayer() )
 	{
 		Vector vThrowPos = Weapon_ShootPosition() - Vector(0,0,12);
-
-		if( UTIL_PointContents(vThrowPos) & CONTENTS_SOLID )
+		
+		if( UTIL_PointContents(vThrowPos, CONTENTS_SOLID) & CONTENTS_SOLID )
 		{
 			Msg("Weapon spawning in solid!\n");
 		}
@@ -2393,8 +2392,6 @@ int CBaseCombatCharacter::OnTakeDamage( const CTakeDamageInfo &info )
 		return 0;
 
 	m_iDamageCount++;
-
-	m_uiLastDamageTypeFlags = info.GetDamageType();
 
 	if ( info.GetDamageType() & DMG_SHOCK )
 	{

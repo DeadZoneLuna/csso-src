@@ -98,14 +98,14 @@ void CWeaponCZ75::PrimaryAttack()
 	FX_FireBullets(
 		pPlayer->entindex(),
 		pPlayer->Weapon_ShootPosition(),
-		pPlayer->EyeAngles() + 2.0f * pPlayer->GetPunchAngle(),
+		pPlayer->GetFinalAimAngle(),
 		GetWeaponID(),
 		Primary_Mode,
 		CBaseEntity::GetPredictionRandomSeed() & 255,
 		GetInaccuracy(),
 		GetSpread()); 
 
-	m_flNextPrimaryAttack = m_flNextSecondaryAttack = gpGlobals->curtime + GetCSWpnData().m_flCycleTime;
+	m_flNextPrimaryAttack = m_flNextSecondaryAttack = gpGlobals->curtime + GetCSWpnData().m_flCycleTime[m_weaponMode];
 
 	if (!m_iClip1 && pPlayer->GetAmmoCount( GetPrimaryAmmoType() ) <= 0)
 	{
@@ -118,9 +118,10 @@ void CWeaponCZ75::PrimaryAttack()
 	// update accuracy
 	m_fAccuracyPenalty += GetCSWpnData().m_fInaccuracyImpulseFire[Primary_Mode];
 
-	QAngle angle = pPlayer->GetPunchAngle();
-	angle.x -= 1.5;
-	pPlayer->SetPunchAngle( angle );
+	// table driven recoil
+	Recoil( m_weaponMode );
+
+	m_flRecoilIndex += 1.0f;
 }
 
 Activity CWeaponCZ75::GetDeployActivity()
@@ -173,12 +174,12 @@ void CWeaponCZ75::Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatChar
 				{
 					vm->SetBodygroup( vm->FindBodygroupByName( "front_mag" ), 1 );
 					//world model
-					CBaseWeaponWorldModel *pWorldModel = GetWeaponWorldModel();
+					/*CBaseWeaponWorldModel *pWorldModel = GetWeaponWorldModel();
 					if ( pWorldModel )
 					{
 						pWorldModel->SetBodygroup( pWorldModel->FindBodygroupByName( "front_mag" ), 1 );
 					}
-					else
+					else*/
 					{
 						SetBodygroup( FindBodygroupByName( "front_mag" ), 1 );
 					}
@@ -198,12 +199,12 @@ void CWeaponCZ75::Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatChar
 				{
 					vm->SetBodygroup( vm->FindBodygroupByName( "front_mag" ), iGroupNum );
 					//world model
-					CBaseWeaponWorldModel *pWorldModel = GetWeaponWorldModel();
+					/*CBaseWeaponWorldModel *pWorldModel = GetWeaponWorldModel();
 					if ( pWorldModel )
 					{
 						pWorldModel->SetBodygroup( pWorldModel->FindBodygroupByName( "front_mag" ), iGroupNum );
 					}
-					else
+					else*/
 					{
 						SetBodygroup( FindBodygroupByName( "front_mag" ), iGroupNum );
 					}

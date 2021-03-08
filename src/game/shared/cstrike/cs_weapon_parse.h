@@ -10,10 +10,14 @@
 #pragma once
 #endif
 
+#ifdef CLIENT_DLL
+	#define CWeaponCSBase C_WeaponCSBase
+#endif
 
 #include "weapon_parse.h"
 #include "networkvar.h"
 
+class CWeaponCSBase;
 
 //--------------------------------------------------------------------------------------------------------
 enum CSWeaponType
@@ -87,7 +91,6 @@ enum CSWeaponID
 	WEAPON_KNIFE_STILETTO,
 	WEAPON_KNIFE_URSUS,
 	WEAPON_KNIFE_WIDOWMAKER,
-	WEAPON_KNIFE_PUSH,
 	WEAPON_P90,
 
 	WEAPON_HKP2000,
@@ -119,6 +122,36 @@ enum CSWeaponID
 #define MAX_EQUIPMENT (WEAPON_MAX - WEAPON_KEVLAR)
 
 void PrepareEquipmentInfo( void );
+
+class WeaponRecoilData
+{
+public:
+
+	WeaponRecoilData();
+	~WeaponRecoilData();
+
+	void GetRecoilOffsets( CWeaponCSBase *pWeapon, int iMode, int iIndex, float& fAngle, float &fMagnitude );
+	void GenerateRecoilPattern( CSWeaponID id );
+
+private:
+
+	struct RecoilOffset
+	{
+		float	fAngle;
+		float	fMagnitude;
+	};
+
+	struct RecoilData
+	{
+		CSWeaponID					iWeaponID;
+		RecoilOffset				recoilTable[2][64];
+	};
+
+	CUtlMap< CSWeaponID, RecoilData* > m_mapRecoilTables;
+
+	void GenerateRecoilTable( RecoilData *data );
+
+};
 
 //--------------------------------------------------------------------------------------------------------
 const char * WeaponClassAsString( CSWeaponType weaponType );
@@ -190,22 +223,32 @@ public:
 	float	m_flRange;
 	float	m_flRangeModifier;
 	int		m_iBullets;
-	float	m_flCycleTime;
-	float	m_flCycleTimeAlt;
+	float	m_flCycleTime[2];
 
 	// variables for new accuracy model
 	float m_fSpread[2];
 	float m_fInaccuracyCrouch[2];
 	float m_fInaccuracyStand[2];
 	float m_fInaccuracyJump[2];
+	float m_fInaccuracyJumpInitial;
 	float m_fInaccuracyLand[2];
 	float m_fInaccuracyLadder[2];
 	float m_fInaccuracyImpulseFire[2];
 	float m_fInaccuracyMove[2];
 	float m_fRecoveryTimeStand;
+	float m_fRecoveryTimeStandFinal;
 	float m_fRecoveryTimeCrouch;
+	float m_fRecoveryTimeCrouchFinal;
 	float m_fInaccuracyReload;
 	float m_fInaccuracyAltSwitch;
+	float m_fRecoilAngle[2];
+	float m_fRecoilAngleVariance[2];
+	float m_fRecoilMagnitude[2];
+	float m_fRecoilMagnitudeVariance[2];
+	int   m_iRecoilSeed;
+
+	int   m_iRecoveryTransitionStartBullet;
+	int   m_iRecoveryTransitionEndBullet;
 
 	// Delay until the next idle animation after shooting.
 	float	m_flTimeToIdleAfterFire;
@@ -238,24 +281,11 @@ public:
 	float	m_flIronsightFOV;
 	float	m_flIronsightPivotForward;
 	char	m_szIronsightDotMaterial[MAX_WEAPON_STRING];
-
-	// buymenu
-	char	m_szBuyMenuAnim[MAX_WEAPON_STRING];
-	char	m_szBuyMenuAnimT[MAX_WEAPON_STRING];
-
-	struct RecoilOffset
-	{
-		float	fAngle;
-		float	fMagnitude;
-	};
-	RecoilOffset	m_recoilTable[2][64];
    
 	int		GetKillAward( void ) const;
 	int		GetWeaponPrice( void ) const;
 	int		GetDefaultPrice( void );
 	int		GetPrevousPrice( void );
-	void	GenerateRecoilTable();
-	void	GetRecoilOffsets( int iMode, int iIndex, float& fAngle, float &fMagnitude ) const;
 	void	SetWeaponPrice( int iPrice ) { m_iWeaponPrice = iPrice; }
 	void	SetDefaultPrice( int iPrice ) { m_iDefaultPrice = iPrice; }
 	void	SetPreviousPrice( int iPrice ) { m_iPreviousPrice = iPrice; }

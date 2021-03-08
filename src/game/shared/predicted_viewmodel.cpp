@@ -286,4 +286,4 @@ void CPredictedViewModel::CalcIronsightView( const Vector& eyePosition, const QA
 		}
 	}
 }
-#endif 
+#endif

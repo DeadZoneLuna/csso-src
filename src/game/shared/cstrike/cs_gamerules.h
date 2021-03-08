@@ -39,6 +39,8 @@
 #define WINNER_TER		TEAM_TERRORIST
 #define WINNER_CT		TEAM_CT
 
+#define MAX_WEAPON_NAME_POPUP_RANGE 128.0
+
 //=============================================================================
 // HPE_BEGIN:
 // [tj] Forward declaration so we can track bot suicides in the game rules.
@@ -203,6 +205,8 @@ public:
 	int  GetStartMoney( void );
 
 	void AddHostageRescueTime( void );
+
+	bool IsPlayingClassic( void ) const;
 
 	bool IsPlayingAnyCompetitiveStrictRuleset( void ) const;
 
@@ -374,6 +378,8 @@ public:
 	void BalanceTeams( void );
 	void MoveHumansToHumanTeam( void );
 	bool TeamFull( int team_id );
+	int	 MaxNumPlayersOnTerrTeam();
+	int  MaxNumPlayersOnCTTeam();
 	bool TeamStacked( int newTeam_id, int curTeam_id  );
 	bool FPlayerCanRespawn( CBasePlayer *pPlayer );
 	void UpdateTeamScores();
@@ -388,6 +394,9 @@ public:
 
 	void CheckLevelInitialized();
 	void CheckRestartRound();
+
+	bool CanPlayerHearTalker( CBasePlayer* pListener, CBasePlayer *pSpeaker, bool bTeamOnly );
+	virtual bool PlayerCanHearChat( CBasePlayer *pListener, CBasePlayer *pSpeaker, bool bTeamOnly );
 
 
 	// Checks if it still needs players to start a round, or if it has enough players to start rounds.

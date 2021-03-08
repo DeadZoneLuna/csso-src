@@ -97,7 +97,6 @@ void CWeaponUSP::Spawn()
 	BaseClass::Spawn();
 
 	//m_iDefaultAmmo = 12;
-	m_flAccuracy = 0.92;
 	m_bSilencerOn = true;
 	m_weaponMode = Secondary_Mode;
 	m_flDoneSwitchingSilencer = 0.0f;
@@ -108,7 +107,6 @@ void CWeaponUSP::Spawn()
 
 bool CWeaponUSP::Deploy()
 {
-	m_flAccuracy = 0.92;
 	m_flDoneSwitchingSilencer = 0.0f;
 
 	return BaseClass::Deploy();
@@ -156,15 +154,7 @@ void CWeaponUSP::PrimaryAttack()
 	if ( !pPlayer )
 		return;
 
-	float flCycleTime =  GetCSWpnData().m_flCycleTime;
-
-	// Mark the time of this shot and determine the accuracy modifier based on the last shot fired...
-	m_flAccuracy -= (0.275)*(0.3 - (gpGlobals->curtime - m_flLastFire));
-
-	if (m_flAccuracy > 0.92)
-		m_flAccuracy = 0.92;
-	else if (m_flAccuracy < 0.6)
-		m_flAccuracy = 0.6;
+	float flCycleTime =  GetCSWpnData().m_flCycleTime[m_weaponMode];
 
 	m_flLastFire = gpGlobals->curtime;
 
@@ -194,7 +184,7 @@ void CWeaponUSP::PrimaryAttack()
 	FX_FireBullets(
 		pPlayer->entindex(),
 		pPlayer->Weapon_ShootPosition(),
-		pPlayer->EyeAngles() + 2.0f * pPlayer->GetPunchAngle(),
+		pPlayer->GetFinalAimAngle(),
 		GetWeaponID(),
 		m_weaponMode,
 		CBaseEntity::GetPredictionRandomSeed() & 255,
@@ -212,19 +202,16 @@ void CWeaponUSP::PrimaryAttack()
 	// update accuracy
 	m_fAccuracyPenalty += GetCSWpnData().m_fInaccuracyImpulseFire[m_weaponMode];
 
-	QAngle angle = pPlayer->GetPunchAngle();
-	angle.x -= 2;
-	pPlayer->SetPunchAngle( angle );
+	// table driven recoil
+	Recoil( m_weaponMode );
+
+	m_flRecoilIndex += 1.0f;
 }
 
 
 bool CWeaponUSP::Reload()
 {
-	if ( !DefaultPistolReload() )
-		return false;
-	
-	m_flAccuracy = 0.92;
-	return true;
+	return DefaultPistolReload();
 }
 
 
@@ -258,15 +245,7 @@ void CWeaponUSP::Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatChara
 				}
 
 				//world model
-				CBaseWeaponWorldModel *pWorldModel = GetWeaponWorldModel();
-				if ( pWorldModel )
-				{
-					pWorldModel->SetBodygroup( FindBodygroupByName( "silencer" ), 0 );
-				}
-				else
-				{
-					SetBodygroup( FindBodygroupByName( "silencer" ), 0 );
-				}
+				SetBodygroup( FindBodygroupByName( "silencer" ), 0 );
 				break;
 			}
 			case AE_CL_HIDE_SILENCER:
@@ -278,15 +257,7 @@ void CWeaponUSP::Operator_HandleAnimEvent( animevent_t *pEvent, CBaseCombatChara
 				}
 
 				//world model
-				CBaseWeaponWorldModel *pWorldModel = GetWeaponWorldModel();
-				if ( pWorldModel )
-				{
-					pWorldModel->SetBodygroup( FindBodygroupByName( "silencer" ), 1 );
-				}
-				else
-				{
-					SetBodygroup( FindBodygroupByName( "silencer" ), 1 );
-				}
+				SetBodygroup( FindBodygroupByName( "silencer" ), 1 );
 				break;
 			}
 		}

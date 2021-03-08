@@ -45,6 +45,8 @@ const int MAX_LEAF_PVERTS = 128;
 // Only allocate this after it is turned on
 leafvis_t *g_LeafVis = NULL;
 
+leafvis_t *g_FrustumVis = NULL, *g_ClipVis[4] = {NULL,NULL,NULL,NULL};
+
 static void AddPlaneToList( CUtlVector<cplane_t> &list, const Vector& normal, float dist, int invert )
 {
 	cplane_t plane;
@@ -173,6 +175,12 @@ void LeafvisChanged( IConVar *pLeafvisVar, const char *pOld, float flOldValue )
 	{
 		delete g_LeafVis;
 		g_LeafVis = NULL;
+	}
+
+	if ( g_FrustumVis )
+	{
+		delete g_FrustumVis;
+		g_FrustumVis = NULL;
 	}
 }
 
@@ -352,8 +360,6 @@ void DrawLeafvis_Solid( leafvis_t *pVis )
 	}
 }
 
-leafvis_t *g_FrustumVis = NULL, *g_ClipVis[3] = {NULL,NULL,NULL};
-
 int FindMinBrush( CCollisionBSPData *pBSPData, int nodenum, int brushIndex )
 {
 	while (1)
@@ -378,9 +384,10 @@ int FindMinBrush( CCollisionBSPData *pBSPData, int nodenum, int brushIndex )
 	return brushIndex;
 }
 
+#pragma warning (disable:4389) // '==' : signed/unsigned mismatch; yeah go fuck yourself idiot
 void RecomputeClipbrushes( bool bEnabled )
 {
-	for ( int v = 0; v < 3; v++ )
+	for ( int v = 0; v < 4; v++ )
 	{
 		delete g_ClipVis[v];
 		g_ClipVis[v] = NULL;
@@ -389,11 +396,18 @@ void RecomputeClipbrushes( bool bEnabled )
 	if ( !bEnabled )
 		return;
 
-	for ( int v = 0; v < 3; v++ )
+	for ( int v = 0; v < 4; v++ )
 	{
-		int contents[3] = {CONTENTS_PLAYERCLIP|CONTENTS_MONSTERCLIP, CONTENTS_MONSTERCLIP, CONTENTS_PLAYERCLIP};
+		int contents[4] = {CONTENTS_PLAYERCLIP|CONTENTS_MONSTERCLIP, CONTENTS_MONSTERCLIP, CONTENTS_PLAYERCLIP, CONTENTS_GRENADECLIP};
 		g_ClipVis[v] = new leafvis_t;
-		g_ClipVis[v]->color.Init( v != 1 ? 1.0f : 0.5, 0.0f, v != 0 ? 1.0f : 0.0f );
+		if ( v == 3 )
+		{
+			g_ClipVis[v]->color.Init( 0.0f, 0.8f, 0.0f );
+		}
+		else
+		{
+			g_ClipVis[v]->color.Init( v != 1 ? 1.0f : 0.5, 0.0f, v != 0 ? 1.0f : 0.0f );
+		}
 		CCollisionBSPData *pBSP = GetCollisionBSPData();
 		int lastBrush = pBSP->numbrushes; 
 		if ( pBSP->numcmodels > 1 )
@@ -403,7 +417,7 @@ void RecomputeClipbrushes( bool bEnabled )
 		for ( int i = 0; i < lastBrush; i++ )
 		{
 			cbrush_t *pBrush = &pBSP->map_brushes[i];
-			if ( (pBrush->contents & (CONTENTS_PLAYERCLIP|CONTENTS_MONSTERCLIP)) == contents[v] )
+			if ( (pBrush->contents & (CONTENTS_PLAYERCLIP|CONTENTS_MONSTERCLIP|CONTENTS_GRENADECLIP)) == contents[v] )
 			{
 				CUtlVector<cplane_t> planeList;
 				if ( pBrush->IsBox() )
@@ -515,11 +529,16 @@ void LeafVisDraw( void )
 			DrawLeafvis_Solid( g_ClipVis[1] );
 			DrawLeafvis_Solid( g_ClipVis[2] );
 		}
+		else if ( r_drawclipbrushes.GetInt() == 3 )
+		{
+			DrawLeafvis_Solid( g_ClipVis[3] ); // only grenade clip
+		}
 		else
 		{
 			DrawLeafvis( g_ClipVis[0] );
 			DrawLeafvis( g_ClipVis[1] );
 			DrawLeafvis( g_ClipVis[2] );
+			DrawLeafvis( g_ClipVis[3] );
 		}
 	}
 
